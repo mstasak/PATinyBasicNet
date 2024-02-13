@@ -1,4 +1,4 @@
-# New Palo Alto Tiny Basic for .Net/Windows
+# Palo Alto Tiny Basic for .Net/Windows
 "Copyleft, all wrongs reserved"
 
 Reimplementing the famous Dr. Wang's Palo Alto tiny basic, a 2K interpreter for the 8080A microcomputer, in a Windows .Net console project.
