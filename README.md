@@ -1,4 +1,6 @@
 # New Palo Alto Tiny Basic for .Net/Windows
+"Copyleft, all wrongs reserved"
+
 Reimplementing the famous Dr. Wang's Palo Alto tiny basic, a 2K interpreter for the 8080A microcomputer, in a Windows .Net console project.
 
 ## Status
@@ -10,10 +12,12 @@ Beef it up with several features:
 - a GUI editor
 - a graphics drawing library (2D)
 - maybe a turtlegraphics lib
+- a string manipulation library
 - sound creation
 - a database access library
 - a file access library
 - network access?
+- some debugging tools (trace, dump, watch, maybe line debugging)
 - Subs and Functions with passed arguments and independent variable scopes
 - String, Int32, and Double data types (maybe bool, byte, int64 as well)
 - full expression operators list (add bitwise, logical, exponentiation, maybe short-circuiting, null-coalesce, assignment ops)
@@ -24,3 +28,4 @@ Beef it up with several features:
 - constants
 - importable modules with private details/limited public visibility
 - extensibility system to define new statements and libraries accessed via DLL calls
+- Mac and Linux ports or build configurations (should be pretty easy at present)
