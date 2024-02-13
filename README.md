@@ -16,7 +16,7 @@ Beef it up with several features:
 - sound creation
 - a database access library
 - a file access library
-- network access?
+- network access? net service access? JSON lib?
 - some debugging tools (trace, dump, watch, maybe line debugging)
 - Subs and Functions with passed arguments and independent variable scopes
 - String, Int32, and Double data types (maybe bool, byte, int64 as well)
@@ -28,4 +28,8 @@ Beef it up with several features:
 - constants
 - importable modules with private details/limited public visibility
 - extensibility system to define new statements and libraries accessed via DLL calls
-- Mac and Linux ports or build configurations (should be pretty easy at present)
+- Mac and Linux (incl Pi) ports or build configurations (should be pretty easy at present)
+- compatibility modes, to enforce strict original version or allow enhancements (maybe fork enhancements instead)
+- possibly some gaming support, including DirectX input?
+- Idea: User-defined statements
+- Mouse input (not sure if this is practical without some sort of event system)
