@@ -33,3 +33,4 @@ Beef it up with several features:
 - possibly some gaming support, including DirectX input?
 - Idea: User-defined statements
 - Mouse input (not sure if this is practical without some sort of event system)
+- classes/structs/records/etc. Some custom data structure, preferably with OOP capabilities.
