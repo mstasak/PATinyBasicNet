@@ -48,17 +48,24 @@ internal class Expression {
             ;* <EXPR4> CAN BE AN <EXPR> IN PARENTHESES.
             ;*
          */
-        int a, b;
+        int? a, b;
         var oldLinePos = parser.LinePosition;
         try {
-            a = ExprComparisonTerm();
+            a = TryExprComparisonTerm();
+            if (a == null) {
+                value = 0;
+                return false;
+            }
             var whichOp = parser.ScanStringTableEntry(["=", "<=", "<>", "<", ">=", ">", "#"]);
             if (whichOp == null) {
                 value = (short)a;
                 return true;
             }
             //fix terms into signed short range (-32768..32767)
-            b = ExprComparisonTerm();
+            b = TryExprComparisonTerm();
+            if (b == null) {
+                throw new RuntimeException($"Value expected after comparison operator.");
+            }
             a = whichOp switch {
                 0 => (a == b) ? 1 : 0,
                 1 => (a <= b) ? 1 : 0,
@@ -72,9 +79,9 @@ internal class Expression {
             value = (short)a;
             return true;
         } catch (Exception) {
-            value = 0;
-            return false;
-            //throw;
+            //value = 0;
+            //return false;
+            throw;
         }
     }
 
@@ -83,18 +90,27 @@ internal class Expression {
     /// </summary>
     /// <returns></returns>
     /// <exception cref="RuntimeException"></exception>
-    internal short ExprComparisonTerm() {
-        int a, b;
+    internal short? TryExprComparisonTerm() {
+        int? a, b;
         if (parser.ScanString("-")) {
             //- prefix
-            a = -ExprAddSubTerm();
-        }
-        else {
-            a = ExprAddSubTerm();
+            a = TryExprAddSubTerm();
+            if (a == null) {
+                return null;
+            }
+            a = -a;
+        } else {
+            a = TryExprAddSubTerm();
+            if (a == null) {
+                return null;
+            }
         }
         int? match;
         while ((match = parser.ScanStringTableEntry(["+", "-"])) != null) {
-            b = ExprAddSubTerm();
+            b = TryExprAddSubTerm();
+            if (b == null) {
+                throw new RuntimeException($"Value expected after addition/subtraction operator.");
+            }
             a = match switch {
                 0 => a + b,
                 1 => a - b,
@@ -110,9 +126,12 @@ internal class Expression {
         return (short)a;
     }
 
-    internal short ExprAddSubTerm() {
-        int a, b;
-        a = ExprMulDivTerm();
+    internal short? TryExprAddSubTerm() {
+        int? a, b;
+        a = TryExprMulDivTerm();
+        if (a == null) {
+            return null;
+        }
         int? match;
         while (true) {
             parser.SkipSpaces();
@@ -121,7 +140,10 @@ internal class Expression {
                 break;
             }
 
-            b = ExprMulDivTerm();
+            b = TryExprMulDivTerm();
+            if (b == null) {
+                throw new RuntimeException($"Value expected after multiplication/division operator.");
+            }
             if ((match == 1 || match == 2) && b == 0) {
                 throw new RuntimeException("Division by zero.");
             }
@@ -141,15 +163,16 @@ internal class Expression {
         return (short)a;
     }
 
-    internal short ExprMulDivTerm() {
+    internal short? TryExprMulDivTerm() {
         //test for fn
         short rslt;
         parser.SkipSpaces();
         if (!parser.ScanShort(out rslt) &&
-            !TryGetFunction(out rslt) && 
-            !TryGetVariable(out rslt) && 
+            !TryGetFunction(out rslt) &&
+            !TryGetVariable(out rslt) &&
             !TryGetParen(out rslt)) {
-            throw new RuntimeException("Value expected.");
+            //throw new RuntimeException("Value expected.");
+            return null;
         }
         return rslt;
     }
@@ -210,17 +233,19 @@ internal class Expression {
                 //we found a variable (a single letter followed by nothing or a non-letter) (easy dumb parsing rule)
                 var variableName = c.ToString();
                 parser.LinePosition++;
-                var vValue = VariableStore.Shared.Globals[variableName];
-                if (vValue == null) {
+                Variable? vValue;
+                if (VariableStore.Shared.Globals.TryGetValue(variableName, out vValue)) {
+                    var variableValue = vValue.ShortValue ?? 0;
+                    value = variableValue;
+                    rslt = true;
+                } else {
                     vValue = new Variable(variableName, 0);
                     VariableStore.Shared.Globals[variableName] = vValue;
+                    value = 0;
+                    rslt = true; //allow referencing an uninitialized var (for now)
                 }
-                var variableValue = vValue.ShortValue ?? 0;
-                value = variableValue;
-                rslt = true;
             }
-        }
-        else if (c == '@') {
+        } else if (c == '@') {
             var arrIndex = ParenExpr();
             var arr = VariableStore.Shared.Globals["@"];
             if (arr == null) {

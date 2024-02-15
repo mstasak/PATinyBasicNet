@@ -18,7 +18,7 @@ internal class VariableStore {
 
     internal Variable? TryGetVariable(string name, bool createIfMissing = true) {
         Variable? rslt;
-        if (!Globals.TryGetValue(name, out rslt)) {
+        if (Globals.TryGetValue(name, out rslt)) {
             //found it
         } else {
             //missing; create it with a value of zero if it is a single character name

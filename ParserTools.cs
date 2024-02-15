@@ -27,22 +27,22 @@ internal partial class ParserTools {
         Line = line;
         LinePosition = linePosition;
         LineNumber = lineNumber;
-        PosStack.Clear();
+        //PosStack.Clear();
     }
     
-    private Stack<int> PosStack = new();
+    //private Stack<int> PosStack = new();
 
-    internal void PushPos() {
-        PosStack.Push(LinePosition);
-    }
+    //internal void PushPos() {
+    //    PosStack.Push(LinePosition);
+    //}
 
-    internal void PopPos() {
-        LinePosition = PosStack.Pop();
-    }
+    //internal void PopPos() {
+    //    LinePosition = PosStack.Pop();
+    //}
 
-    internal void PopDiscardPos() {
-        _ = PosStack.Pop();
-    }
+    //internal void PopDiscardPos() {
+    //    _ = PosStack.Pop();
+    //}
 
     internal void SkipSpaces() {
         while (LinePosition < Line.Length) {
@@ -117,7 +117,10 @@ internal partial class ParserTools {
         return null;
     }
 
-    internal int? ScanStringTableEntry(string[] targetList) {
+    internal int? ScanStringTableEntry(string[] targetList, bool skipSpaces = true) {
+        if (skipSpaces) {
+            SkipSpaces();
+        }
         var which = 0;
         foreach (var target in targetList) {
             if (ScanString(target)) {
@@ -128,7 +131,10 @@ internal partial class ParserTools {
         return null;
     }
 
-    internal bool ScanString(string target) {
+    internal bool ScanString(string target, bool skipSpaces = true) {
+        if (skipSpaces) {
+            SkipSpaces();
+        }
         if (target.Length <= Line.Length - LinePosition) {
             if (string.Equals(target, Line[LinePosition..(LinePosition + target.Length)],StringComparison.InvariantCulture | StringComparison.InvariantCultureIgnoreCase)) {
                 LinePosition += target.Length;
@@ -149,7 +155,7 @@ internal partial class ParserTools {
         return found ? rsltVal : null;
     }
 
-    [GeneratedRegex("(\\+|\\-)?\\d+")]
+    [GeneratedRegex("^\\s*(\\+|\\-)?\\d+")]
     private static partial Regex RegexLiteralInt();
 
     internal bool ScanInt(out int value) {
@@ -185,7 +191,7 @@ internal partial class ParserTools {
 
     internal string? ScanName() {
         SkipSpaces();
-        return ScanRegex("[@A-Z][A-z0-9]*");
+        return ScanRegex("^[@A-Z][A-z0-9]*");
     }
 
     internal string? ScanRegex(string pattern) {
@@ -205,7 +211,7 @@ internal partial class ParserTools {
     /// </summary>
     /// 
     internal void SkipToEolOrNextStatementOnLine() {
-        if (ScanRegex("\\s*REM(\\s|$)") != null) { 
+        if (ScanRegex("^\\s*REM(\\s|$)") != null) { 
             LinePosition = Line.Length;
             return;
         }
@@ -266,7 +272,6 @@ internal partial class ParserTools {
                     _ => c2
                 };
                 LinePosition++;
-                rslt += c;
             } else {
                 rslt += c;
             }
@@ -275,6 +280,6 @@ internal partial class ParserTools {
     }
 
     internal bool ScanEmptyParens() { //for builtin functions with empty argument lists
-        return ScanRegex("\\s*\\(\\s*\\)") != null;
+        return ScanRegex("^\\s*\\(\\s*\\)") != null;
     }
 }

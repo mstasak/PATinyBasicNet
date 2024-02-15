@@ -12,7 +12,7 @@ internal class RuntimeException: Exception {
     }
     internal string FormatedMessage(Interpreter env) {
         return MessageDetail + "\r\n" +
-            env.CurrentLine + "\r\n" +
-            new string(' ', env.LinePosition) + "^\r\n";
+            ParserTools.Shared.Line + "\r\n" +
+            new string(' ', ParserTools.Shared.LinePosition) + "^\r\n";
     }
 }

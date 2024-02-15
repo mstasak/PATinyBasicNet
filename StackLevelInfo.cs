@@ -1,30 +1,34 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace NewPaloAltoTB;
-internal enum StackLevelType {
-    ForNext,
-    ForNextCStyle,
-    GosubReturn,
-    WhileExprDoBodyEnd,
-    DoWhileExprBodyEnd,
+
+internal enum StackEntryKind {
+    None,
+    For,
+    Gosub
 }
 internal class StackLevelInfo {
-    internal int StackDepth;
-    internal StackLevelType LevelType;
-    internal Interpreter TBInterpreter = Interpreter.Shared;
-    internal ParserTools parser = ParserTools.Shared;
     //SymbolTable LocalSymbols; //symbols defined at current level
     //SymbolTable LocalScope; //level of last new scope (sub/function)
-    internal ProgramLocation EntryPoint;
-    internal ProgramLocation? EndPoint; //1st stmt after next or other loop terminator
+    internal ProgramLocation EntryPoint; //1st statement of loop body, or statement after gosub
+    internal ProgramLocation? EndPoint; //1st stmt after next or other loop terminator; unused by gosub
+    internal StackEntryKind Kind = StackEntryKind.None;
+
+    internal string ForVariable = "";
+    internal short ForInitial;
+    internal short ForLimit;
+    internal short ForIncrement;
     
-    internal ProgramLocation? FindEndPoint() {
+    internal ProgramLocation? FindForLoopEndPoint() {
         if (EndPoint == null) {
+            var parser = ParserTools.Shared;
+            var TBInterpreter = Interpreter.Shared;
             //tricky here, for a richer language: scan over code to find "next forvariable"
             //we'll make it simpler using some clean nesting rules - for..next must be 1:1 with next after for, with 
             //any nested loops begun and ended inside loop body - no crazy spaghetti, and next must name correct var
@@ -51,10 +55,6 @@ internal class StackLevelInfo {
         }
         return EndPoint;
     }
-    internal string ForVariable = "";
-    internal short ForInitial;
-    internal short ForLimit;
-    internal short ForIncrement;
 
     internal StackLevelInfo(string file, int lineNum, int colNum) {
         EntryPoint = new(file, lineNum, colNum);

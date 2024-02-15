@@ -37,6 +37,10 @@ internal class CommandShell() {
                 if (!(TryCommand() || TryEdits() || TryStatements())) {
                     throw new RuntimeException("WHAT?  The command or statement was not understood. Type HELP for command list.");
                 }
+            } catch (RuntimeException ex) {
+                Console.WriteLine(ex.MessageDetail);
+                //throw;
+                SuppressPrompt = false;
             } catch (Exception ex) {
                 Console.WriteLine(ex.Message);
                 //throw;

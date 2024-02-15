@@ -22,7 +22,7 @@ internal partial class Interpreter {
     internal int LineNumber;
     internal int CurrentLineOrd;
     internal int NewLineOrd;
-    internal int LinePosition;
+    //internal int LinePosition;
     internal string? CurrentLine;
     //internal short LineLabel;
     internal bool OutputSwitch = true;
@@ -31,6 +31,8 @@ internal partial class Interpreter {
     internal ParserTools parser = ParserTools.Shared;
     internal Expression ExpressionService = Expression.Shared;
     internal bool StopRequested = false;
+    internal bool ImmediateMode = false;
+    internal string CurrentFile => ImmediateMode ? "" : "FILE"; //in future will contain actual filename.bas path
     internal static Interpreter Shared => shared.Value;
     private static readonly Lazy<Interpreter> shared = new(() => new Interpreter());
 
@@ -49,8 +51,7 @@ internal partial class Interpreter {
                 LineLocations[kv.Key] -= 1;
             }
             return true;
-        }
-        else {
+        } else {
             return false;
         }
     }
@@ -66,13 +67,11 @@ internal partial class Interpreter {
         if (ListPosition.Key == lineNumber) {
             //replace found
             Program[ListPosition.Value] = (lineNumber, lineContents);
-        }
-        else if (ListPosition.Key == -1) {
+        } else if (ListPosition.Key == -1) {
             //at end
             LineLocations[lineNumber] = Program.Count;
             Program.Add((lineNumber, lineContents));
-        }
-        else {
+        } else {
             //insert before found
             Program.Insert(ListPosition.Value, (lineNumber, lineContents));
             foreach (var kv in LineLocations.Where(e => e.Key > lineNumber)) {
@@ -80,7 +79,6 @@ internal partial class Interpreter {
             }
         }
     }
-
 
     /* internal void CrLf() {
     //    OutChar('\r');
@@ -106,6 +104,7 @@ internal partial class Interpreter {
         var statementSucceeded = true;
         while (statementSucceeded && !parser.EoL()) {
             statementSucceeded = RunStatement(immediateMode);
+            _ = parser.ScanRegex("^\\s*;");
             if (StopRequested) {
                 break;
             }
@@ -127,8 +126,7 @@ internal partial class Interpreter {
                     if (CurrentLineOrd >= Program.Count) {
                         break;
                     }
-                }
-                else {
+                } else {
                     // RunLine caused a new next line, i.e. GoTo, GoSub, Next, Return or similar.
                     // (certain statements, when run, will directly change RunLineOrd)
                     // so do nothing to RunLineOrd
@@ -242,7 +240,7 @@ internal partial class Interpreter {
                 rslt = false;
                 break;
             }
-            if (parser.ScanRegex("\\s*,\\s*") == null) {
+            if (parser.ScanRegex("^\\s*,\\s*") == null) {
                 break;
             }
         }
@@ -256,7 +254,8 @@ internal partial class Interpreter {
         if (VName == null) {
             return false;
         }
-        if (parser.ScanRegex("\\s*=") == null) {
+        VName = VName.ToUpperInvariant();
+        if (parser.ScanRegex("^\\s*=") == null) {
             parser.LinePosition = oldPos;
             return false;
         }
@@ -264,8 +263,7 @@ internal partial class Interpreter {
         if (ExpressionService.TryEvaluateExpr(out value)) {
             VariableStore.Shared.StoreVariable(VName, value);
             return true;
-        }
-        else {
+        } else {
             throw new RuntimeException("Expression expected.");
         }
     }
@@ -281,19 +279,16 @@ internal partial class Interpreter {
             if (TryPrintFormat() || TryPrintStringLiteral() || TryPrintNumber()) {
                 if (TrySkipComma()) {
                     //ready for next term, just repeat do loop
-                }
-                else {
+                } else {
                     //no comma so no more terms expected, do output final crlf
                     Console.WriteLine();
                     break;
                 }
-            }
-            else {
+            } else {
                 if (DidPrintSomething) {
                     //we only get here with Print term [,term...], (trailing ',' AFTER printing something)
                     break;
-                }
-                else {
+                } else {
                     //trailing ',' without printing anything (or only processing format terms)!
                     throw new RuntimeException("Print statement will not print anything!");
                 }
@@ -319,8 +314,7 @@ internal partial class Interpreter {
             Console.Write(pValue.ToString().PadLeft(PrintNumWidth)); // pValue.ToString($"{PrintNumWidth}:D"));
             DidPrintSomething = true;
             return true;
-        }
-        else {
+        } else {
             return false;
         }
     }
@@ -343,7 +337,7 @@ internal partial class Interpreter {
         var prompt = parser.ScanStringLiteral() ?? "Press a key...";
         Console.WriteLine(prompt);
         Console.ReadKey();
-        return true;    
+        return true;
     }
     internal bool RunIfStatement() {
         var rslt = false;
@@ -357,21 +351,57 @@ internal partial class Interpreter {
         } else {
             throw new RuntimeException("Invalid If expression.");
         }
-        return rslt;    
+        return rslt;
     }
     internal bool RunForStatement() {
         //var = expr [down]to expr [step expr]
-        return true;    
+        var varName = parser.ScanName();
+        if (varName == null) {
+            throw new RuntimeException("For loop variable name not found.");
+        }
+        if (parser.ScanRegex("^\\s*=") == null) {
+            throw new RuntimeException("For loop syntax: expected '='.");
+        }
+        short initValue;
+        if (!ExpressionService.TryEvaluateExpr(out initValue)) {
+            throw new RuntimeException("For loop: error in initial value expression.");
+        }
+        if (parser.ScanRegex("^\\s*to") == null) {
+            throw new RuntimeException("For loop syntax: expected \" TO \".");
+        }
+        short limitValue;
+        if (!ExpressionService.TryEvaluateExpr(out limitValue)) {
+            throw new RuntimeException("For loop: error in limit value expression.");
+        }
+        short stepValue = 1;
+        if (parser.ScanRegex("^\\s*step") != null) {
+            if (!ExpressionService.TryEvaluateExpr(out stepValue)) {
+                throw new RuntimeException("For loop: error in step value expression.");
+            }
+        } else {
+            if (limitValue < initValue) {
+                stepValue = -1;    
+            }
+        }
+        //got a valid for statement!
+        ControlStack.Shared.ForLoopBegin(varName: varName, initialVal: initValue, stepVal: stepValue, limitVal: limitValue);
+
+        return true;
     }
     internal bool RunNextStatement() {
-        return false;    
+        var varName = parser.ScanName();
+        if (varName == null) {
+            throw new RuntimeException("Expected: for loop variable name.");
+        }
+        ControlStack.Shared.ForLoopNext(varName: varName);
+        return true;
     }
     internal bool RunGotoStatement() {
         var rslt = false;
         short newLineNum;
         if (ExpressionService.TryEvaluateExpr(out newLineNum)) {
             int newOrd;
-            if (LineLocations.TryGetValue(newLineNum, out newOrd)) { 
+            if (LineLocations.TryGetValue(newLineNum, out newOrd)) {
                 NewLineOrd = newOrd;
                 parser.LinePosition = parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
                 rslt = true;
@@ -379,15 +409,15 @@ internal partial class Interpreter {
                 throw new RuntimeException("Goto target line not found.");
             }
         } else {
-            throw new RuntimeException("Goto target line number/expression not understood.");           
+            throw new RuntimeException("Goto target line number/expression not understood.");
         }
         return rslt;
     }
     internal bool RunGosubStatement() {
-        return false;    
+        return false;
     }
     internal bool RunReturnStatement() {
-        return false;    
+        return false;
     }
 
 }
