@@ -9,27 +9,35 @@ Code cleanup, documentation and testing not started.
 
 ## Plans
 Beef it up with several features:
+
+(likely)
+- long variable names
+- while loops
+
+(possible)
+- String, Int32, and Double data types (maybe bool, byte, int64 as well)
+- full expression operators list (add bitwise, logical, exponentiation, maybe short-circuiting, null-coalesce, assignment ops)
+- Mac and Linux (incl Pi) ports or build configurations (should be pretty easy at present)
+- a string manipulation library
+- a file access library
 - a graphics window
-- a GUI editor
 - a graphics drawing library (2D)
 - maybe a turtlegraphics lib
-- a string manipulation library
+- a settings library
+- some form of variable scoping - perhaps with SCOPE "NAME"/ENDSCOPE "NAME" statements, and out-of-scope references via scopename.variablename syntax.  Maybe also [global/nearest].variablename syntax.  Hmm...
+
+(doubtful - much work just to make an inferior version of vb6/vb.net)
+- a GUI editor
 - sound creation
 - a database access library
-- a file access library
 - network access? net service access? JSON lib?
 - some debugging tools (trace, dump, watch, maybe line debugging)
 - Subs and Functions with passed arguments and independent variable scopes
-- String, Int32, and Double data types (maybe bool, byte, int64 as well)
-- full expression operators list (add bitwise, logical, exponentiation, maybe short-circuiting, null-coalesce, assignment ops)
 - built-in list and dictionary objects. Maybe queue, stack, set, tree, bytearray,
-- long variable names
-- while loops
 - some kind of error handling
 - constants
 - importable modules with private details/limited public visibility
 - extensibility system to define new statements and libraries accessed via DLL calls
-- Mac and Linux (incl Pi) ports or build configurations (should be pretty easy at present)
 - compatibility modes, to enforce strict original version or allow enhancements (maybe fork enhancements instead)
 - possibly some gaming support, including DirectX input?
 - Idea: User-defined statements
