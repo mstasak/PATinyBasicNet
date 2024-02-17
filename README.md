@@ -4,7 +4,7 @@
 Reimplementing the famous Dr. Wang's Palo Alto tiny basic, a 2K interpreter for the 8080A microcomputer, in a Windows .Net console project.
 
 ## Status
-~ 90% done with initial coding, Let (assignment), Print, For-Next, Goto, Gosub, Rem statements work, along with the line editor.  Input statement ready to work.
+~ 90% done with initial coding, Let (assignment), Print, For-Next, Goto, Gosub, Rem, Return, If, Wait, Stop statements, work, along with the line editor.  Input statement ready to work.
 Code cleanup, documentation and testing not started.
 
 ## Plans
@@ -13,6 +13,8 @@ Beef it up with several features:
 (likely)
 - long variable names
 - while loops
+- if-else statement, or maybe something more normal like if cond then ... elseif cond2 then ... else ... endif?
+- thunderstrike audio effect whenever a GOTO is executed. (just kidding!)
 
 (possible)
 - String, Int32, and Double data types (maybe bool, byte, int64 as well)
