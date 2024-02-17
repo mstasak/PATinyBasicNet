@@ -21,13 +21,14 @@ namespace NewPaloAltoTB;
 internal partial class Interpreter {
     internal int LineNumber;
     internal int CurrentLineOrd;
-    internal int NewLineOrd;
+    internal int NewLineOrd = -1;
+    internal string ImmediateLine = "";
     //internal int LinePosition;
     internal string? CurrentLine;
     //internal short LineLabel;
     internal bool OutputSwitch = true;
-    internal List<(int linenum, string src)> Program = [];
-    internal Dictionary<short, int> LineLocations = []; //looks up ordinal position of a basic line# in Program
+    internal List<(int linenum, string src)> ProgramSource = [];
+    internal Dictionary<int, int> LineLocations = []; //looks up ordinal position of a basic line# in Program
     internal ParserTools parser = ParserTools.Shared;
     internal Expression ExpressionService = Expression.Shared;
     internal bool StopRequested = false;
@@ -45,7 +46,7 @@ internal partial class Interpreter {
     internal bool DeleteLine(short lineNumber) {
         int ordinalLinePos;
         if (LineLocations.TryGetValue(lineNumber, out ordinalLinePos)) {
-            Program.RemoveAt(ordinalLinePos);
+            ProgramSource.RemoveAt(ordinalLinePos);
             LineLocations.Remove(lineNumber);
             foreach (var kv in LineLocations.Where(e => e.Key > lineNumber)) {
                 LineLocations[kv.Key] -= 1;
@@ -63,17 +64,17 @@ internal partial class Interpreter {
     /// <param name="lineContents"></param>
     internal void StoreLine(short lineNumber, string lineContents) {
         //insert or update line
-        var ListPosition = LineLocations.Where(e => e.Key >= lineNumber).AsQueryable().FirstOrDefault(new KeyValuePair<short, int>(-1, (short)-1));
+        var ListPosition = LineLocations.Where(e => e.Key >= lineNumber).AsQueryable().FirstOrDefault(new KeyValuePair<int, int>(-1, (short)-1));
         if (ListPosition.Key == lineNumber) {
             //replace found
-            Program[ListPosition.Value] = (lineNumber, lineContents);
+            ProgramSource[ListPosition.Value] = (lineNumber, lineContents);
         } else if (ListPosition.Key == -1) {
             //at end
-            LineLocations[lineNumber] = Program.Count;
-            Program.Add((lineNumber, lineContents));
+            LineLocations[lineNumber] = ProgramSource.Count;
+            ProgramSource.Add((lineNumber, lineContents));
         } else {
             //insert before found
-            Program.Insert(ListPosition.Value, (lineNumber, lineContents));
+            ProgramSource.Insert(ListPosition.Value, (lineNumber, lineContents));
             foreach (var kv in LineLocations.Where(e => e.Key > lineNumber)) {
                 LineLocations[kv.Key] += 1;
             }
@@ -96,14 +97,14 @@ internal partial class Interpreter {
     //    }
     //} */
 
-    internal bool RunLine(string line, int? lineNumber, bool immediateMode) {
+    internal bool RunLine(string line, int lineNumber) {
         StopRequested = false;
-        NewLineOrd = 0;
+        NewLineOrd = -1;
         parser.SetLine(line: line, linePosition: 0, lineNumber: lineNumber);
         //TODO: figure out how to handle 1st return in case like '100 GOSUB 2000; GOSUB 3000'
         var statementSucceeded = true;
-        while (statementSucceeded && !parser.EoL()) {
-            statementSucceeded = RunStatement(immediateMode);
+        while (statementSucceeded && !parser.EoL() && NewLineOrd == -1) {
+            statementSucceeded = RunStatement(immediateMode: lineNumber == 0);
             _ = parser.ScanRegex("^\\s*;");
             if (StopRequested) {
                 break;
@@ -112,26 +113,36 @@ internal partial class Interpreter {
         return statementSucceeded;
     }
 
-    internal void RunCurrentProgram() {
+    internal bool Run(bool Immediate) {
+        var rslt = true;
+        ImmediateMode = Immediate;
         StopRequested = false;
-        CurrentLineOrd = 0;
+        CurrentLineOrd = Immediate ? -1 : 0;
+        NewLineOrd = -1;
         try {
             while (true) {
-                (LineNumber, CurrentLine) = Program[CurrentLineOrd];
+                if (CurrentLineOrd >= 0) {
+                    (LineNumber, CurrentLine) = ProgramSource[CurrentLineOrd];
+                } else {
+                    (LineNumber, CurrentLine) = (0, ImmediateLine);
+                }
                 var oldCurrentLineOrd = CurrentLineOrd;
-                RunLine(CurrentLine, LineNumber, false);
-                if (NewLineOrd == 0) {
+                rslt = RunLine(CurrentLine, LineNumber);
+                if (LineNumber == 0) {
+                    break;
+                }
+                int.Min(1, 2);
+                if (NewLineOrd == -1) {
                     //advance to next line
                     CurrentLineOrd++;
-                    if (CurrentLineOrd >= Program.Count) {
+                    if (CurrentLineOrd >= ProgramSource.Count) {
                         break;
                     }
                 } else {
                     // RunLine caused a new next line, i.e. GoTo, GoSub, Next, Return or similar.
-                    // (certain statements, when run, will directly change RunLineOrd)
-                    // so do nothing to RunLineOrd
+                    // (certain statements, when run, will directly change the current line and lineposition)
+                    // so do nothing to NewLineOrd. This is to jump into mid-line, after a ';'.
                     CurrentLineOrd = NewLineOrd;
-                    // TODO: New position may be in middle of a line!  Change handling somehow
                 }
                 if (StopRequested) {
                     break;
@@ -140,10 +151,14 @@ internal partial class Interpreter {
             //for now, retain these - may want some debug dump or retry/resume command
             //LineNumber = 0;
             //LinePosition = 0;
+        } catch (RuntimeException ex) {
+            Console.WriteLine(ex.MessageDetail + "\\n" + ex.ToString());
+            throw;
         } catch (Exception ex) {
             Console.WriteLine(ex.Message + "\\n" + ex.ToString());
             throw;
         }
+        return rslt;
     }
 
     internal enum StatementCode {
@@ -402,24 +417,49 @@ internal partial class Interpreter {
         if (ExpressionService.TryEvaluateExpr(out newLineNum)) {
             int newOrd;
             if (LineLocations.TryGetValue(newLineNum, out newOrd)) {
-                NewLineOrd = newOrd;
+                NewLineOrd = newOrd; //run loop will transfer to this line
                 parser.LinePosition = parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
                 rslt = true;
             } else {
-                throw new RuntimeException("Goto target line not found.");
+                throw new RuntimeException($"Goto target line {newLineNum} not found.");
             }
         } else {
             throw new RuntimeException("Goto target line number/expression not understood.");
         }
+
         return rslt;
     }
     internal bool RunGosubStatement() {
-        return false;
+        var rslt = false;
+        short newLineNum;
+        if (ExpressionService.TryEvaluateExpr(out newLineNum)) {
+            int newOrd;
+            if (LineLocations.TryGetValue(newLineNum, out newOrd)) {
+                NewLineOrd = newOrd; //run loop will transfer to this line
+                //parser.LinePosition = parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
+                parser.ScanRegex("^\\s*;"); //skip statement separator
+                ControlStack.Shared.Gosub(newLineNum, newOrd); //push return address onto control stack
+                rslt = true;
+            } else {
+                throw new RuntimeException($"Gosubtarget line {newLineNum} not found.");
+            }
+        } else {
+            throw new RuntimeException("Gosub target line number/expression not understood.");
+        }
+
+        return rslt;
     }
     internal bool RunReturnStatement() {
-        return false;
+        ControlStack.Shared.Return();
+        return true;
     }
 
+    internal void JumpToLine(int newLineOrder) {
+        LineNumber = ProgramSource[newLineOrder].linenum;
+        CurrentLineOrd = newLineOrder;
+        CurrentLine = ProgramSource[newLineOrder].src;
+        parser.SetLine(CurrentLine, 0, LineNumber);
+    }
 }
 
 

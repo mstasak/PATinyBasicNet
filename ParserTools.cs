@@ -14,7 +14,7 @@ internal partial class ParserTools {
     
     internal string Line = "";
     internal int LinePosition = 0;
-    internal int? LineNumber = 0; //null for immediate statement
+    internal int LineNumber = 0; //null for immediate statement
     
     //private static readonly ParserTools shared = new();
     //internal static ParserTools Shared => shared;
@@ -23,7 +23,7 @@ internal partial class ParserTools {
     private static readonly Lazy<ParserTools> shared = new(() => new ParserTools());
 
 
-    internal void SetLine(string line, int linePosition = 0, int? lineNumber = null) {
+    internal void SetLine(string line, int linePosition, int lineNumber) {
         Line = line;
         LinePosition = linePosition;
         LineNumber = lineNumber;

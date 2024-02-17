@@ -33,14 +33,14 @@ internal class StackLevelInfo {
             //we'll make it simpler using some clean nesting rules - for..next must be 1:1 with next after for, with 
             //any nested loops begun and ended inside loop body - no crazy spaghetti, and next must name correct var
             var (linesave, positionsave) = (parser.Line, parser.LinePosition);
-            foreach (var (linenum, src) in TBInterpreter.Program.Where(e => e.linenum >= EntryPoint.LineNumber &&
+            foreach (var (linenum, src) in TBInterpreter.ProgramSource.Where(e => e.linenum >= EntryPoint.LineNumber &&
                                                                        e.src.Contains("next",StringComparison.InvariantCultureIgnoreCase))) {
                 //skip until find a line matching next\s+forvariable; make sure it is not a comment or print literal
                 while (!parser.EoL()) {
                     (parser.Line, parser.LinePosition) = (src, 0);
                     var match = parser.ScanRegex("\\s*next\\s+" + ForVariable + "(\\;|$)");
                     if (match != null) {
-                        EndPoint = new ProgramLocation(EntryPoint.FileName, linenum, parser.LinePosition);
+                        EndPoint = new ProgramLocation(EntryPoint.FileName, linenum, parser.LinePosition, parser.Line);
                         break;
                     }
                     else {
@@ -56,8 +56,8 @@ internal class StackLevelInfo {
         return EndPoint;
     }
 
-    internal StackLevelInfo(string file, int lineNum, int colNum) {
-        EntryPoint = new(file, lineNum, colNum);
+    internal StackLevelInfo(string file, int lineNum, int colNum, string? srcLine) {
+        EntryPoint = new(file, lineNum, colNum, srcLine);
     }
 
 

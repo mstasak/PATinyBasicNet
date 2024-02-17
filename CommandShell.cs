@@ -31,7 +31,7 @@ internal class CommandShell() {
                     Console.Write("\nOK>\n");
                 }
                 CmdLine = Console.ReadLine() ?? "";
-                parser.SetLine(CmdLine);
+                parser.SetLine(CmdLine, 0, 0);
                 //parse CmdLine: command, statement(s), or line editing
                 parser.SkipSpaces();
                 if (!(TryCommand() || TryEdits() || TryStatements())) {
@@ -70,9 +70,7 @@ internal class CommandShell() {
         var cmd = (CmdEnum?)parser.ScanStringTableEntry(CommandList);
         switch (cmd) {
             case CmdEnum.List:
-                foreach (var (linenum, src) in TBInterpreter.Program) { 
-                    Console.WriteLine($"{(int)(linenum),5:D} {src}");
-                }
+                ListProgram();
                 rslt = true;
                 break;
             case CmdEnum.Run:
@@ -80,7 +78,7 @@ internal class CommandShell() {
                 rslt = true;
                 break;
             case CmdEnum.New:
-                TBInterpreter.Program.Clear();
+                TBInterpreter.ProgramSource.Clear();
                 TBInterpreter.LineLocations.Clear();
                 rslt = true;
                 break;
@@ -140,10 +138,23 @@ internal class CommandShell() {
     }
 
     internal bool TryStatements() {
-        return TBInterpreter.RunLine(line: parser.Line, lineNumber: null, immediateMode: true);
+        TBInterpreter.ImmediateLine = parser.Line;
+        TBInterpreter.Run(Immediate: true);
+        return true;
+    }
+
+    internal void ListProgram() {
+        var first = 1;
+        var last = 0;
+        var count = 0;
+
+        foreach (var (linenum, src) in TBInterpreter.ProgramSource) { 
+            Console.WriteLine($"{linenum,5:D} {src}");
+        }
+
     }
 
     internal void RunProgram() {
-        TBInterpreter.RunCurrentProgram();
+        TBInterpreter.Run(Immediate: false);
     }
 }

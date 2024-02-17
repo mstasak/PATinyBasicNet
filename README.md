@@ -4,7 +4,8 @@
 Reimplementing the famous Dr. Wang's Palo Alto tiny basic, a 2K interpreter for the 8080A microcomputer, in a Windows .Net console project.
 
 ## Status
-~ 66% done, Let (assignments) and Print statements work, along with the line editor.  Rem, Goto, Wait, If statements are ready to test.  Input, For, Gosub are ready to work.
+~ 90% done with initial coding, Let (assignment), Print, For-Next, Goto, Gosub, Rem statements work, along with the line editor.  Input statement ready to work.
+Code cleanup, documentation and testing not started.
 
 ## Plans
 Beef it up with several features:
