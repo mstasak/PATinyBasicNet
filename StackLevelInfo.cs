@@ -20,7 +20,7 @@ internal class StackLevelInfo {
     internal ProgramLocation? EndPoint; //1st stmt after next or other loop terminator; unused by gosub
     internal StackEntryKind Kind = StackEntryKind.None;
 
-    internal string ForVariable = "";
+    internal LValue? ForLValue;
     internal short ForInitial;
     internal short ForLimit;
     internal short ForIncrement;
@@ -38,7 +38,7 @@ internal class StackLevelInfo {
                 //skip until find a line matching next\s+forvariable; make sure it is not a comment or print literal
                 while (!parser.EoL()) {
                     (parser.Line, parser.LinePosition) = (src, 0);
-                    var match = parser.ScanRegex("\\s*next\\s+" + ForVariable + "(\\;|$)");
+                    var match = parser.ScanRegex("\\s*next\\s+" + ForLValue!.LVar.VName + "(\\;|$)");
                     if (match != null) {
                         EndPoint = new ProgramLocation(EntryPoint.FileName, linenum, parser.LinePosition, parser.Line);
                         break;

@@ -12,6 +12,7 @@ using System.ComponentModel.Design;
 using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
 using System.Runtime.Intrinsics.Arm;
+using System.Xml.Linq;
 
 namespace NewPaloAltoTB;
 
@@ -43,7 +44,7 @@ internal partial class Interpreter {
     /// </summary>
     /// <param name="lineNumber"></param>
     /// <returns></returns>
-    internal bool DeleteLine(short lineNumber) {
+    internal bool DeleteLine(int lineNumber) {
         int ordinalLinePos;
         if (LineLocations.TryGetValue(lineNumber, out ordinalLinePos)) {
             ProgramSource.RemoveAt(ordinalLinePos);
@@ -104,7 +105,7 @@ internal partial class Interpreter {
         //TODO: figure out how to handle 1st return in case like '100 GOSUB 2000; GOSUB 3000'
         var statementSucceeded = true;
         while (statementSucceeded && !parser.EoL() && NewLineOrd == -1) {
-            statementSucceeded = RunStatement(immediateMode: lineNumber == 0);
+            statementSucceeded = RunStatement();
             _ = parser.ScanRegex("^\\s*;");
             if (StopRequested) {
                 break;
@@ -131,7 +132,6 @@ internal partial class Interpreter {
                 if (LineNumber == 0) {
                     break;
                 }
-                int.Min(1, 2);
                 if (NewLineOrd == -1) {
                     //advance to next line
                     CurrentLineOrd++;
@@ -176,6 +176,7 @@ internal partial class Interpreter {
         GotoStatement,
         GosubStatement,
         ReturnStatement,
+        DumpStatement,
         /* future possibles:
          dim, global, sub, function, import/inherit/etc to access caller-scoped vars
         graphics subs/funcs
@@ -184,7 +185,7 @@ internal partial class Interpreter {
          */
     }
 
-    internal bool RunStatement(bool immediateMode) {
+    internal bool RunStatement() {
         var rslt = false;
         var whichStmt = parser.ScanStringTableEntry([
             "LET",
@@ -201,13 +202,13 @@ internal partial class Interpreter {
             "GOTO",
             "GOSUB",
             "RETURN",
-
         ]);
         switch ((StatementCode?)whichStmt) {
             case StatementCode.LetStatement:
                 rslt = RunAssignmentStatement();
                 break;
             case StatementCode.InputStatement:
+                rslt = RunInputStatement();
                 break;
             case StatementCode.PrintStatement:
                 rslt = RunPrintStatement();
@@ -263,24 +264,24 @@ internal partial class Interpreter {
     }
 
     internal bool RunOneAssignment() {
-        var rslt = true;
+        var rslt = false;
         var oldPos = parser.LinePosition;
-        var VName = parser.ScanName();
-        if (VName == null) {
-            return false;
+
+        var lVal = parser.ScanLValue();
+        if (lVal != null) {
+            if (parser.ScanRegex("^\\s*=") != null) {
+                short value;
+                if (ExpressionService.TryEvaluateExpr(out value)) {
+                    lVal!.Value = value;
+                    rslt = true;
+                } else {
+                    throw new RuntimeException("Expression expected.");
+                }
+            } else {
+                parser.LinePosition = oldPos;
+            }
         }
-        VName = VName.ToUpperInvariant();
-        if (parser.ScanRegex("^\\s*=") == null) {
-            parser.LinePosition = oldPos;
-            return false;
-        }
-        short value;
-        if (ExpressionService.TryEvaluateExpr(out value)) {
-            VariableStore.Shared.StoreVariable(VName, value);
-            return true;
-        } else {
-            throw new RuntimeException("Expression expected.");
-        }
+        return rslt;
     }
 
     private int PrintNumWidth;
@@ -343,6 +344,50 @@ internal partial class Interpreter {
         return false;
     }
 
+    internal short GetUserInputShort() {
+        short rslt;
+        while (true) {
+            var s = Console.ReadLine();
+            if (s == null) {
+                throw new RuntimeException("Unexpected end of file on console input.");
+            }
+            var val = ParserTools.StrToShort(s);
+            if (val.HasValue) {
+                rslt = val.Value;
+                break;
+            }
+            Console.WriteLine("Expected: number.  Please try again.");
+        }
+        return rslt;
+    }
+
+    private bool RunInputStatement() {
+        var rslt = false;
+
+        while (true) {
+            var prompt = parser.ScanStringLiteral();
+            if (prompt == null) {
+                prompt = "?";
+            } else {
+                parser.SkipSpaces();
+                parser.ScanString(",");  //accept comma between prompt and variable name, i.e. INPUT "AGE?" A or INPUT "AGE?", A
+            }
+            var lVal = parser.ScanLValue();
+            if (lVal == null) {
+                throw new RuntimeException("Variable name or array element expected.");
+            }
+            
+            Console.WriteLine(prompt);
+            var inputVal = GetUserInputShort();
+            lVal!.Value = inputVal;
+            if (parser.ScanChar(',', true) == null) {
+                break;    
+            }
+        }
+
+        return true;
+    }
+
     internal bool TrySkipComma() {
         parser.SkipSpaces();
         return parser.ScanString(",");
@@ -370,8 +415,8 @@ internal partial class Interpreter {
     }
     internal bool RunForStatement() {
         //var = expr [down]to expr [step expr]
-        var varName = parser.ScanName();
-        if (varName == null) {
+        var varLValue = parser.ScanLValue();
+        if (varLValue == null) {
             throw new RuntimeException("For loop variable name not found.");
         }
         if (parser.ScanRegex("^\\s*=") == null) {
@@ -399,7 +444,7 @@ internal partial class Interpreter {
             }
         }
         //got a valid for statement!
-        ControlStack.Shared.ForLoopBegin(varName: varName, initialVal: initValue, stepVal: stepValue, limitVal: limitValue);
+        ControlStack.Shared.ForLoopBegin(lValue: varLValue, initialVal: initValue, stepVal: stepValue, limitVal: limitValue);
 
         return true;
     }

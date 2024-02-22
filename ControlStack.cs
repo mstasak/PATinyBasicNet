@@ -18,7 +18,7 @@ internal class ControlStack {
     internal Interpreter TBInterpreter = Interpreter.Shared;
     internal ParserTools parser = ParserTools.Shared;
 
-    internal StackLevelInfo? ForLoopBegin(string varName, short initialVal, short stepVal, short limitVal) {
+    internal StackLevelInfo? ForLoopBegin(LValue lValue, short initialVal, short stepVal, short limitVal) {
         if (parser.ScanRegex("^\\s*;") != null) {
         } else {
             //should be at eol()
@@ -33,15 +33,15 @@ internal class ControlStack {
                                        colNum: parser.LinePosition,
                                        srcLine: parser.Line);
         //EndPoint = null; //unknown at this time
-        level.ForVariable = varName;
+        level.ForLValue = lValue;
         level.ForInitial = initialVal;
         level.ForIncrement = stepVal;
         level.ForLimit = limitVal;
         level.Kind = StackEntryKind.For;
 
-        VariableStore.Shared.StoreVariable(varName.ToUpperInvariant(), initialVal);
+        lValue.Value = initialVal;
         if ((stepVal > 0 && initialVal > limitVal) || (stepVal < 0 && initialVal < limitVal)) {
-            ForLoopSkip(level);
+            ForLoopSkip(level); //loop index outside limits, break out of loop immediately
             return null;
         }
 
@@ -74,17 +74,14 @@ internal class ControlStack {
     internal StackLevelInfo ForLoopNext(string varName) {
         StackLevelInfo? lvl;
         while (TBStack.TryPeek(out lvl)) {
-            if (lvl.Kind == StackEntryKind.For && string.Equals(lvl.ForVariable, varName, StringComparison.InvariantCultureIgnoreCase)) {
+            if (lvl.Kind == StackEntryKind.For && string.Equals(lvl.ForLValue!.LVar.VName, varName, StringComparison.InvariantCultureIgnoreCase)) {
                 //this is matching level
-                var indexVar = VariableStore.Shared.TryGetVariable(varName.ToUpperInvariant(), false);
-                if (indexVar == null) {
-                    throw new RuntimeException($"Variable '{varName}' not found.");
-                }
-                var indexVal = indexVar.ShortValue ?? 0;
+                //var indexVar = lvl.ForLValue!.LVar;
+                var indexVal = lvl.ForLValue!.Value;
                 bool loopEnded;
                 indexVal += lvl.ForIncrement;
                 //VariableStore.Shared.StoreVariable(varName, indexVal);
-                indexVar.VValue = indexVal;
+                lvl.ForLValue!.Value = indexVal;
                 if (lvl.ForIncrement > 0) {
                     loopEnded = indexVal > lvl.ForLimit;
                 } else {
@@ -113,7 +110,7 @@ internal class ControlStack {
                 return lvl;
             }
             _ = TBStack.Pop();
-            continue;
+            //continue;
         }
         throw new RuntimeException("Next variable does not match an executing for loop.");
     }
@@ -134,7 +131,6 @@ internal class ControlStack {
         level.Kind = StackEntryKind.Gosub;
         TBStack.Push(level);
         //stuff new loc into TBInterpreter, parser (just like goto)
-        int newOrd;
         TBInterpreter.JumpToLine(newLineOrd);
         return level;
     }

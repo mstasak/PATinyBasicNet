@@ -10,7 +10,7 @@ namespace NewPaloAltoTB;
 public class Program {
     public static int Main(string[] args) {
         CommandShell Shell = new();
-        Shell.Run(args);
+        Shell.RunCommandLoop(args);
         return 0;
     }
 }

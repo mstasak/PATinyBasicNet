@@ -169,8 +169,8 @@ internal class Expression {
         parser.SkipSpaces();
         if (!parser.ScanShort(out rslt) &&
             !TryGetFunction(out rslt) &&
-            !TryGetVariable(out rslt) &&
-            !TryGetParen(out rslt)) {
+            !TryGetParen(out rslt) &&
+            !TryGetVariable(out rslt)) {
             //throw new RuntimeException("Value expected.");
             return null;
         }
@@ -225,42 +225,99 @@ internal class Expression {
         var rslt = false;
         value = 0;
         //two choices here - autoinit undeclared var to zero, or return false.
-        var c = parser.CurrentChar ?? ' ';
-        c = char.ToUpperInvariant(c);
-        if (char.IsLetter(c)) {
-            var c2 = char.ToUpperInvariant(parser.NextChar ?? ' ');
-            if (!char.IsLetter(c2)) {
-                //we found a variable (a single letter followed by nothing or a non-letter) (easy dumb parsing rule)
-                var variableName = c.ToString();
-                parser.LinePosition++;
-                Variable? vValue;
-                if (VariableStore.Shared.Globals.TryGetValue(variableName, out vValue)) {
-                    var variableValue = vValue.ShortValue ?? 0;
-                    value = variableValue;
-                    rslt = true;
-                } else {
-                    vValue = new Variable(variableName, 0);
-                    VariableStore.Shared.Globals[variableName] = vValue;
-                    value = 0;
-                    rslt = true; //allow referencing an uninitialized var (for now)
+        var vName = parser.ScanName();
+        if (vName != null) {
+            var vVar = Variable.FindVariable(vName);
+            if (vVar == null) {
+                //var not previously created, so reject if vname[index...]
+                if (parser.ScanChar('[', true) != null) {
+                    throw new RuntimeException("An array must be declared before referencing it.");
+                }
+                //create scalar with value = 0
+                vVar = new Variable(vName: vName, value: 0, autoCreate: false); //constructing Variable adds it to Variable.VariableStore
+                value = 0;
+                rslt = true;
+            } else {
+                //variable exists, look for index problems
+                switch (vVar.VType) {
+                    case VariableType.Short:
+                        value = vVar.ShortValue ?? 0;
+                        if (parser.ScanChar('[') != null) {
+                            throw new RuntimeException("Unexpected array index value list after scalar variable.");
+                        }
+                        rslt = true;
+                        break;
+                    case VariableType.ShortArray:
+                        var indices = parser.ScanIndices(vVar.VDimensions);
+                        if (indices == null) {
+                            throw new RuntimeException("Missing or incorrect index value list after array variable.");
+                        } else {
+                            value = vVar.ShortElementValue(indices) ?? 0;
+                            rslt = true;
+                            break;
+                        }
+                        //if (parser.ScanChar('[', true) == null) {
+                        //    throw new RuntimeException("Expected: [arrayindex]");
+                        //}
+                        //short arrIndex;
+                        //if (!TryEvaluateExpr(out arrIndex)) {
+                        //    throw new RuntimeException("Expected: arrayindex");
+                        //}
+                        //if (parser.ScanChar(']', true) == null) {
+                        //    throw new RuntimeException("Expected: ]");
+                        //}
+                        //value = vVar.ShortElementValue(arrIndex);
+                    default:
+                        parser.LinePosition = oldPos;
+                        rslt = false;
+                        break;
                 }
             }
-        } else if (c == '@') {
-            var arrIndex = ParenExpr();
-            var arr = VariableStore.Shared.Globals["@"];
-            if (arr == null) {
-                arr = new Variable("@", new short[16384]);
-                VariableStore.Shared.Globals["@"] = arr;
-            }
-            value = ((short[])arr.VValue)[arrIndex];
-            rslt = true;
-            //the '@[n]' array
-        }
-        if (rslt == false) {
-            parser.LinePosition = oldPos;
         }
         return rslt;
     }
+
+    //internal bool TryGetVariable(out short value) {
+    //    var oldPos = parser.LinePosition;
+    //    var rslt = false;
+    //    value = 0;
+    //    //two choices here - autoinit undeclared var to zero, or return false.
+    //    var c = parser.CurrentChar ?? ' ';
+    //    c = char.ToUpperInvariant(c);
+    //    if (char.IsLetter(c)) {
+    //        var c2 = char.ToUpperInvariant(parser.NextChar ?? ' ');
+    //        if (!char.IsLetter(c2)) {
+    //            //we found a variable (a single letter followed by nothing or a non-letter) (easy dumb parsing rule)
+    //            var variableName = c.ToString();
+    //            parser.LinePosition++;
+    //            Variable? vValue;
+    //            if (VariableStore.Shared.Globals.TryGetValue(variableName, out vValue)) {
+    //                var variableValue = vValue.ShortValue ?? 0;
+    //                value = variableValue;
+    //                rslt = true;
+    //            } else {
+    //                vValue = new Variable(variableName, 0);
+    //                VariableStore.Shared.Globals[variableName] = vValue;
+    //                value = 0;
+    //                rslt = true; //allow referencing an uninitialized var (for now)
+    //            }
+    //        }
+    //    } else if (c == '@') {
+    //        var arrIndex = ParenExpr();
+    //        var arr = VariableStore.Shared.Globals["@"];
+    //        if (arr == null) {
+    //            arr = new Variable("@", new short[16384]);
+    //            VariableStore.Shared.Globals["@"] = arr;
+    //        }
+    //        value = ((short[])arr.VValue)[arrIndex];
+    //        rslt = true;
+    //        //the '@[n]' array
+    //    }
+    //    if (rslt == false) {
+    //        parser.LinePosition = oldPos;
+    //    }
+    //    return rslt;
+    //}
 
     internal short ParenExpr() {
         short rslt = 0;
@@ -273,6 +330,8 @@ internal class Expression {
             } else {
                 throw new RuntimeException("Expected expression.");
             }
+        } else { 
+            throw new RuntimeException("Expected '('.");
         }
         return rslt;
     }

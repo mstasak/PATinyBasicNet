@@ -1,27 +1,37 @@
-﻿using System.Xml.Linq;
+﻿using System.Runtime.CompilerServices;
+using System.Xml.Linq;
 using Microsoft.VisualBasic.FileIO;
 
 namespace NewPaloAltoTB;
 
-
-
 /**
  *   Creating a Windows version of Palo Alto Tiny Basic
  */ 
+
+/// <summary>
+/// Run a command prompt, from which the user can edit lines of source code, issue commands
+/// like Load, Save, Run, or execute immediate statements
+/// </summary>
 internal class CommandShell() {
 
     internal bool Exiting = false;
     internal bool SuppressPrompt = false; //skip prompt during repeated line additions
-    internal string CmdLine = "";
-    internal ParserTools parser = ParserTools.Shared;
+    internal string CommandLine = "";
+    internal ParserTools Parser = ParserTools.Shared;
     internal Interpreter TBInterpreter = Interpreter.Shared;
 
-    internal void Run(string[] _) { //args) {
+    /// <summary>
+    /// Runs a command loop, which prompts the user, accepts an input line,
+    /// and tries to process it as a command, edit command, or statement(s)
+    /// to be executed.
+    /// </summary>
+    /// <param name="_"></param>
+    internal void RunCommandLoop(string[] _) { //args) {
         //to do: process args
         
         //banner
         Console.WriteLine("*** TINY BASIC DOT NET ***");
-        Console.WriteLine("All lefts reserved.");
+        Console.WriteLine("All wrongs and lefts reserved.");
 
         //com loop
         while (!Exiting) {
@@ -30,11 +40,10 @@ internal class CommandShell() {
                 if (!SuppressPrompt) {
                     Console.Write("\nOK>\n");
                 }
-                CmdLine = Console.ReadLine() ?? "";
-                parser.SetLine(CmdLine, 0, 0);
-                //parse CmdLine: command, statement(s), or line editing
-                parser.SkipSpaces();
-                if (!(TryCommand() || TryEdits() || TryStatements())) {
+                CommandLine = Console.ReadLine() ?? throw new RuntimeException("EOF on console input.");
+                Parser.SetLine(line: CommandLine, lineNumber: 0, linePosition: 0);
+                Parser.SkipSpaces();
+                if (!(TryCommand() || TryEdit() || TryStatements())) {
                     throw new RuntimeException("WHAT?  The command or statement was not understood. Type HELP for command list.");
                 }
             } catch (RuntimeException ex) {
@@ -50,7 +59,7 @@ internal class CommandShell() {
         Console.WriteLine("Bye!");
     }
 
-    internal enum CmdEnum {
+    internal enum Commands {
         List,
         Run,
         New,
@@ -60,44 +69,56 @@ internal class CommandShell() {
         Quit,
         Exit,
         Delete,
-        Kill
+        Kill,
+        Help,
+        Dump
     }
 
-    internal string[] CommandList = ["List","Run","New","Load","Save","Bye","Quit","Exit","Delete", "Kill"];
+    internal string[] CommandList = ["List","Run","New","Load","Save","Bye","Quit","Exit","Delete", "Kill", "Help", "Dump"];
 
     internal bool TryCommand() {
         var rslt = false;
-        var cmd = (CmdEnum?)parser.ScanStringTableEntry(CommandList);
+        var cmd = (Commands?)Parser.ScanStringTableEntry(CommandList);
         switch (cmd) {
-            case CmdEnum.List:
+            case Commands.List:
                 ListProgram();
                 rslt = true;
                 break;
-            case CmdEnum.Run:
+            case Commands.Run:
                 RunProgram();
                 rslt = true;
                 break;
-            case CmdEnum.New:
+            case Commands.New:
                 TBInterpreter.ProgramSource.Clear();
                 TBInterpreter.LineLocations.Clear();
                 rslt = true;
                 break;
-            case CmdEnum.Load:
+            case Commands.Load:
                 break;
-            case CmdEnum.Save:
+            case Commands.Save:
                 break;
-            case CmdEnum.Bye:
-            case CmdEnum.Quit:
-            case CmdEnum.Exit:
+            case Commands.Bye:
+            case Commands.Quit:
+            case Commands.Exit:
                 Exiting = true;
                 rslt = true;
                 break;
-            case CmdEnum.Delete:
-            case CmdEnum.Kill:
+            case Commands.Delete:
+            case Commands.Kill:
                 DeleteLine();
                 rslt = true;
                 break;
+            case Commands.Help:
+                //hmm - drill down by typing keywords?  Prev/Next browse 10-20 pages of static content?
+                //try to present a picklist with console mouse clicking to nav?
+                rslt = true;
+                break;
+            case Commands.Dump:
+                DumpVariables();
+                rslt = true;
+                break;
             default:
+                // rslt = false;
                 break;
         }
          if (rslt) {
@@ -106,11 +127,18 @@ internal class CommandShell() {
         return rslt;
     }
 
+    internal void DumpVariables() {
+        Console.WriteLine("Variables:");
+        foreach (var (key, var) in Variable.VariableStore.OrderBy(e => e.Value.VType).ThenBy(e => e.Key)) {
+            Console.WriteLine($"{key.PadRight(10)} = {var.ShortValue}");
+        }
+    }
+
     internal void DeleteLine() {
-        short lineNum;
-        parser.SkipSpaces();
-        if (parser.ScanShort(out lineNum)) {
-            if (parser.EoL()) {
+        int lineNum;
+        Parser.SkipSpaces();
+        if (Parser.ScanInt(out lineNum)) {
+            if (Parser.EoL()) {
                 //delete line if found
                 TBInterpreter.DeleteLine(lineNum);
                 return;
@@ -119,17 +147,17 @@ internal class CommandShell() {
         throw new RuntimeException("WHAT? Kill/Delete: target line number or range not understood.");
     }
 
-    internal bool TryEdits() {
+    internal bool TryEdit() {
         short lineNum;
-        if (parser.ScanShort(out lineNum)) {
-            if (parser.EoL()) {
+        if (Parser.ScanShort(out lineNum)) {
+            if (Parser.EoL()) {
                 //delete line if found
                 TBInterpreter.DeleteLine(lineNum);
                 SuppressPrompt = false;
             } else {
                 //add or replace line of code
-                _ = parser.ScanChar(' ');
-                TBInterpreter.StoreLine(lineNum, parser.Line[parser.LinePosition..]);
+                _ = Parser.ScanChar(' ');
+                TBInterpreter.StoreLine(lineNum, Parser.Line[Parser.LinePosition..]);
                 SuppressPrompt = true;
             }
             return true;
@@ -138,18 +166,24 @@ internal class CommandShell() {
     }
 
     internal bool TryStatements() {
-        TBInterpreter.ImmediateLine = parser.Line;
+        TBInterpreter.ImmediateLine = Parser.Line;
         TBInterpreter.Run(Immediate: true);
         return true;
     }
 
     internal void ListProgram() {
-        var first = 1;
-        var last = 0;
-        var count = 0;
 
-        foreach (var (linenum, src) in TBInterpreter.ProgramSource) { 
+        var count = 0;
+        var listParams = Parser.ScanLineRange();
+        foreach (var (linenum, src) in TBInterpreter.ProgramSource
+            .Where (e => {
+                return (e.linenum >= listParams.low || listParams.low <= 0) &&
+                       (e.linenum <= listParams.high || listParams.high <= 0) &&
+                       (count < listParams.lineCount || listParams.lineCount <= 0) &&
+                       (listParams.search == "" || e.src.Contains(listParams.search,StringComparison.InvariantCultureIgnoreCase));
+            })) { 
             Console.WriteLine($"{linenum,5:D} {src}");
+            count++;
         }
 
     }

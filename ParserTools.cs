@@ -11,11 +11,11 @@ internal partial class ParserTools {
     internal bool IgnoreCaseDefault = false;
     internal RegexOptions RegexOptionsDefault = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
     internal int RegexTimeoutDefault = 250;
-    
+
     internal string Line = "";
     internal int LinePosition = 0;
     internal int LineNumber = 0; //null for immediate statement
-    
+
     //private static readonly ParserTools shared = new();
     //internal static ParserTools Shared => shared;
 
@@ -29,7 +29,7 @@ internal partial class ParserTools {
         LineNumber = lineNumber;
         //PosStack.Clear();
     }
-    
+
     //private Stack<int> PosStack = new();
 
     //internal void PushPos() {
@@ -136,7 +136,7 @@ internal partial class ParserTools {
             SkipSpaces();
         }
         if (target.Length <= Line.Length - LinePosition) {
-            if (string.Equals(target, Line[LinePosition..(LinePosition + target.Length)],StringComparison.InvariantCulture | StringComparison.InvariantCultureIgnoreCase)) {
+            if (string.Equals(target, Line[LinePosition..(LinePosition + target.Length)], StringComparison.InvariantCulture | StringComparison.InvariantCultureIgnoreCase)) {
                 LinePosition += target.Length;
                 return true;
             }
@@ -144,12 +144,12 @@ internal partial class ParserTools {
         return false;
     }
 
-    internal int? StrToInt(string s) {
+    internal static int? StrToInt(string s) {
         int rsltVal;
         var found = int.TryParse(s, out rsltVal);
         return found ? rsltVal : null;
     }
-    internal short? StrToShort(string s) {
+    internal static short? StrToShort(string s) {
         short rsltVal;
         var found = short.TryParse(s, out rsltVal);
         return found ? rsltVal : null;
@@ -191,7 +191,89 @@ internal partial class ParserTools {
 
     internal string? ScanName() {
         SkipSpaces();
-        return ScanRegex("^[@A-Z][A-z0-9]*");
+        return ScanRegex("^(@|[A-Z][A-z0-9_]*)");
+    }
+
+    internal LValue? ScanLValue() {
+        LValue? rslt = null;
+        var vName = ScanName();
+        if (vName != null) {
+            var vVar = Variable.FindVariable(vName);
+            if (vVar != null) {
+                //it exists, check for appropriate indices for VType
+                switch (vVar.VType) {
+                    case VariableType.Short:
+                        var vIndices = ScanIndices();
+                        if (vIndices != null) {
+                            throw new RuntimeException("Unexpected array index list following scalar variable.");
+                        }
+                        rslt = new LValue(vVar, null);
+                        break;
+                    case VariableType.ShortArray:
+                        vIndices = ScanIndices(vVar.VDimensions);
+                        if (vIndices == null) {
+                            throw new RuntimeException("Missing index list following array variable.");
+                        }
+                        rslt = new LValue(vVar, vIndices);
+                        break;
+                }
+            } else {
+                //undefined variable: create if scalar, throw if array
+                if (ScanChar('[', true) == null) {
+                    vVar = new Variable(vName: vName, value: 0, autoCreate: true);
+                    rslt = new LValue(vVar, null);
+                } else {
+                    throw new RuntimeException("Undeclared array has no dimensions, must use DIM to declare it prior to using..");
+                }
+            }
+        } else {
+            //just fall through, no LValue found
+            //rslt = null;
+        }
+        return rslt;
+    }
+
+
+    /// <summary>
+    /// Parse the list of array index values for an array element.  i.e. parse [5] as part of the term x[5].
+    /// </summary>
+    /// <param name="requiredCount"></param>
+    /// <returns>A list of index values.</returns>
+    internal List<int>? ScanIndices(int requiredCount = 0) {
+        var rslt = new List<int>();
+        var needTerm = requiredCount > 0;
+        var needRBracket = false;
+        if (ScanChar('[', true) != null) {
+            while (true) {
+                short indexVal;
+                if (Expression.Shared.TryEvaluateExpr(out indexVal)) {
+                    rslt.Add((int)indexVal);
+                    var gotComma = (ScanChar(',', true) != null);
+                    needTerm = gotComma;
+                    needRBracket = !gotComma;
+                } else {
+                    if (needTerm) {
+                        throw new RuntimeException("Expected: array index expression.");
+                    } else {
+                        needRBracket = true;
+                    }
+                }
+                if (needRBracket) {
+                    if (ScanChar(']', true) != null) {
+                        break;
+                    } else {
+                        throw new RuntimeException("Expected: ']'.");
+                    }
+                }
+            }
+        }
+        if (rslt.Count == requiredCount || requiredCount == 0) {
+            rslt = null;
+        }
+        if (rslt != null && requiredCount > 0 && rslt.Count != requiredCount) {
+            throw new RuntimeException($"Expected {requiredCount} index expressions.");
+        }
+        return rslt;
     }
 
     internal string? ScanRegex(string pattern) {
@@ -211,7 +293,7 @@ internal partial class ParserTools {
     /// </summary>
     /// 
     internal void SkipToEolOrNextStatementOnLine() {
-        if (ScanRegex("^\\s*REM(\\s|$)") != null) { 
+        if (ScanRegex("^\\s*REM(\\s|$)") != null) {
             LinePosition = Line.Length;
             return;
         }
@@ -240,7 +322,7 @@ internal partial class ParserTools {
                 default: break;
             }
             if (lastwassemi) {
-                break;                
+                break;
             }
         }
     }
@@ -281,5 +363,48 @@ internal partial class ParserTools {
 
     internal bool ScanEmptyParens() { //for builtin functions with empty argument lists
         return ScanRegex("^\\s*\\(\\s*\\)") != null;
+    }
+
+    /// <summary>
+    /// Test for end of statement; skip spaces and test for ';' or EoL()
+    /// </summary>
+    /// <returns></returns>
+    internal bool EoStmt() {
+        SkipSpaces();
+        return EoL() || NextChar == ';';
+    }
+
+    internal (bool success, int low, int high, int lineCount, string search) ScanLineRange() {
+        (bool success, int low, int high, int lineCount, string search) rslt = (false, -1, -1, -1, "");
+        int i;
+        bool procedOne;
+        do {
+            var cursorSave = LinePosition;
+            procedOne = false;
+            if (rslt.low == -1 && ScanInt(out i)) {
+                rslt.low = i;
+                procedOne = true;
+            } else {
+                LinePosition = cursorSave;
+                if (rslt.high == -1 && ScanChar('-', true) != null & ScanInt(out i)) {
+                    rslt.high = i;
+                    procedOne = true;
+                } else {
+                    LinePosition = cursorSave;
+                    if (rslt.high == -1 && ScanChar(',', true) != null & ScanInt(out i)) {
+                        rslt.lineCount = i;
+                        procedOne = true;
+                    } else {
+                        LinePosition = cursorSave;
+                        string? s;
+                        if ((s = ScanStringLiteral()) != null) {
+                            rslt.search = s;
+                            procedOne = true;
+                        }
+                    }
+                }
+            }
+        } while (procedOne);
+        return rslt;
     }
 }
