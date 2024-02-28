@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace NewPaloAltoTB;
-internal partial class ParserTools {
+internal partial class CodeParser {
     internal bool IgnoreCaseDefault = false;
     internal RegexOptions RegexOptionsDefault = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
     internal int RegexTimeoutDefault = 250;
@@ -19,8 +19,8 @@ internal partial class ParserTools {
     //private static readonly ParserTools shared = new();
     //internal static ParserTools Shared => shared;
 
-    internal static ParserTools Shared => shared.Value;
-    private static readonly Lazy<ParserTools> shared = new(() => new ParserTools());
+    internal static CodeParser Shared => shared.Value;
+    private static readonly Lazy<CodeParser> shared = new(() => new CodeParser());
 
 
     internal void SetLine(string line, int linePosition, int lineNumber) {
@@ -235,7 +235,7 @@ internal partial class ParserTools {
 
 
     /// <summary>
-    /// Parse the list of array index values for an array element.  i.e. parse [5] as part of the term x[5].
+    /// Parse the list of array index values for an array element.  i.e. parse (5) as part of the term x(5).
     /// </summary>
     /// <param name="requiredCount"></param>
     /// <returns>A list of index values.</returns>
@@ -243,7 +243,7 @@ internal partial class ParserTools {
         var rslt = new List<int>();
         var needTerm = requiredCount > 0;
         var needRBracket = false;
-        if (ScanChar('[', true) != null) {
+        if (ScanChar('(', true) != null) {
             while (true) {
                 short indexVal;
                 if (Expression.Shared.TryEvaluateExpr(out indexVal)) {
@@ -259,19 +259,84 @@ internal partial class ParserTools {
                     }
                 }
                 if (needRBracket) {
-                    if (ScanChar(']', true) != null) {
+                    if (ScanChar(')', true) != null) {
                         break;
                     } else {
-                        throw new RuntimeException("Expected: ']'.");
+                        throw new RuntimeException("Expected: ')'.");
                     }
                 }
             }
         }
-        if (rslt.Count == requiredCount || requiredCount == 0) {
+        if (rslt.Count == requiredCount && requiredCount == 0) {
             rslt = null;
         }
         if (rslt != null && requiredCount > 0 && rslt.Count != requiredCount) {
             throw new RuntimeException($"Expected {requiredCount} index expressions.");
+        }
+        return rslt;
+    }
+
+    /*
+   10 dim arr(10)
+  100 for i=1 to 10
+  110   arr(i) = 10 * i
+  120 next i
+  200 for i=1 to 10
+  210   print arr(i)
+  220 next i     
+     */
+
+    internal (int low, int high)? ScanArrayDimension() {
+        (int low, int high)? rslt = null;
+        short n;
+        if (Expression.Shared.TryEvaluateExpr(out n)) {
+            if (ScanString("to") || ScanString("..")) {
+                short n2;
+                if (Expression.Shared.TryEvaluateExpr(out n2)) {
+                    rslt = (n, n2);
+                } else {
+                    throw new RuntimeException("Expected: array upper bound.");
+                }
+            } else {
+                rslt = (1, n);
+            }
+        //} else {
+        //    return null;    
+        }
+        return rslt;
+    }
+
+    internal List<(int low, int high)>? ScanArrayDimensions() {
+        // allow a variety of formats
+        // dim as int a(1 to 10)
+        // dim as int a(1..10)
+        // dim as int a(10) 'relies on option base to determine lower index value (one for now, may allow zero later)
+        // dim a(10) as int
+        //per BASIC norms, we will wrap dimensions in parentheses
+        
+        List<(int low, int high)>? rslt = null;
+
+        if (ScanChar('(', true) != null) {
+            var dims = new List<(int low, int high)>();
+            while (true) { 
+                var dim = ScanArrayDimension();
+                if (dim == null) {
+                    throw new RuntimeException("Expected: array dimension, e.g. 1 to 10");
+                } else {
+                    dims.Add(dim.Value);
+                }
+                if (ScanChar(',') != null) {
+                    continue;
+                }
+                if (ScanChar(')') != null) {
+                    rslt = dims;
+                    break;
+                } else { 
+                    throw new RuntimeException("Expected: ',' or ')'.");
+                }
+            }
+        //} else {
+        //    return null;
         }
         return rslt;
     }

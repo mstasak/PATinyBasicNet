@@ -17,7 +17,7 @@ internal class Expression {
     internal static Expression Shared => shared.Value;
     private static readonly Lazy<Expression> shared = new(() => new Expression());
 
-    internal ParserTools parser = ParserTools.Shared;
+    internal CodeParser Parser = CodeParser.Shared;
 
     /// <summary>
     /// Evaluate an expression fragment, at 1st level of operator precedence (comparison operators).
@@ -49,14 +49,14 @@ internal class Expression {
             ;*
          */
         int? a, b;
-        var oldLinePos = parser.LinePosition;
+        var oldLinePos = Parser.LinePosition;
         try {
             a = TryExprComparisonTerm();
             if (a == null) {
                 value = 0;
                 return false;
             }
-            var whichOp = parser.ScanStringTableEntry(["=", "<=", "<>", "<", ">=", ">", "#"]);
+            var whichOp = Parser.ScanStringTableEntry(["=", "<=", "<>", "<", ">=", ">", "#"]);
             if (whichOp == null) {
                 value = (short)a;
                 return true;
@@ -92,7 +92,7 @@ internal class Expression {
     /// <exception cref="RuntimeException"></exception>
     internal short? TryExprComparisonTerm() {
         int? a, b;
-        if (parser.ScanString("-")) {
+        if (Parser.ScanString("-")) {
             //- prefix
             a = TryExprAddSubTerm();
             if (a == null) {
@@ -106,7 +106,7 @@ internal class Expression {
             }
         }
         int? match;
-        while ((match = parser.ScanStringTableEntry(["+", "-"])) != null) {
+        while ((match = Parser.ScanStringTableEntry(["+", "-"])) != null) {
             b = TryExprAddSubTerm();
             if (b == null) {
                 throw new RuntimeException($"Value expected after addition/subtraction operator.");
@@ -134,8 +134,8 @@ internal class Expression {
         }
         int? match;
         while (true) {
-            parser.SkipSpaces();
-            match = parser.ScanStringTableEntry(["*", "/", "%"]);
+            Parser.SkipSpaces();
+            match = Parser.ScanStringTableEntry(["*", "/", "%"]);
             if (match == null) {
                 break;
             }
@@ -166,8 +166,8 @@ internal class Expression {
     internal short? TryExprMulDivTerm() {
         //test for fn
         short rslt;
-        parser.SkipSpaces();
-        if (!parser.ScanShort(out rslt) &&
+        Parser.SkipSpaces();
+        if (!Parser.ScanShort(out rslt) &&
             !TryGetFunction(out rslt) &&
             !TryGetParen(out rslt) &&
             !TryGetVariable(out rslt)) {
@@ -178,10 +178,10 @@ internal class Expression {
     }
 
     internal bool TryGetFunction(out short value) {
-        var oldPos = parser.LinePosition;
+        var oldPos = Parser.LinePosition;
         var rslt = false;
         value = 0;
-        var whichMatch = parser.ScanStringTableEntry(["RND", "INP", "PEEK", "USR", "ABS", "SIZE"]);
+        var whichMatch = Parser.ScanStringTableEntry(["RND", "INP", "PEEK", "USR", "ABS", "SIZE"]);
         if (whichMatch.HasValue) {
             switch (whichMatch.Value) {
                 case 0: //RND(n)
@@ -204,7 +204,7 @@ internal class Expression {
                     rslt = true;
                     break;
                 case 5: //SIZE()
-                    if (parser.ScanEmptyParens()) {
+                    if (Parser.ScanEmptyParens()) {
                         value = short.MaxValue;
                         rslt = true;
                     }
@@ -215,22 +215,22 @@ internal class Expression {
             }
         }
         if (rslt == false) {
-            parser.LinePosition = oldPos;
+            Parser.LinePosition = oldPos;
         }
         return rslt;
     }
 
     internal bool TryGetVariable(out short value) {
-        var oldPos = parser.LinePosition;
+        var oldPos = Parser.LinePosition;
         var rslt = false;
         value = 0;
         //two choices here - autoinit undeclared var to zero, or return false.
-        var vName = parser.ScanName();
+        var vName = Parser.ScanName();
         if (vName != null) {
             var vVar = Variable.FindVariable(vName);
             if (vVar == null) {
                 //var not previously created, so reject if vname[index...]
-                if (parser.ScanChar('[', true) != null) {
+                if (Parser.ScanChar('[', true) != null) {
                     throw new RuntimeException("An array must be declared before referencing it.");
                 }
                 //create scalar with value = 0
@@ -242,13 +242,13 @@ internal class Expression {
                 switch (vVar.VType) {
                     case VariableType.Short:
                         value = vVar.ShortValue ?? 0;
-                        if (parser.ScanChar('[') != null) {
+                        if (Parser.ScanChar('[') != null) {
                             throw new RuntimeException("Unexpected array index value list after scalar variable.");
                         }
                         rslt = true;
                         break;
                     case VariableType.ShortArray:
-                        var indices = parser.ScanIndices(vVar.VDimensions);
+                        var indices = Parser.ScanIndices(vVar.VDimensions);
                         if (indices == null) {
                             throw new RuntimeException("Missing or incorrect index value list after array variable.");
                         } else {
@@ -256,19 +256,19 @@ internal class Expression {
                             rslt = true;
                             break;
                         }
-                        //if (parser.ScanChar('[', true) == null) {
+                        //if (Parser.ScanChar('[', true) == null) {
                         //    throw new RuntimeException("Expected: [arrayindex]");
                         //}
                         //short arrIndex;
                         //if (!TryEvaluateExpr(out arrIndex)) {
                         //    throw new RuntimeException("Expected: arrayindex");
                         //}
-                        //if (parser.ScanChar(']', true) == null) {
+                        //if (Parser.ScanChar(']', true) == null) {
                         //    throw new RuntimeException("Expected: ]");
                         //}
                         //value = vVar.ShortElementValue(arrIndex);
                     default:
-                        parser.LinePosition = oldPos;
+                        Parser.LinePosition = oldPos;
                         rslt = false;
                         break;
                 }
@@ -278,18 +278,18 @@ internal class Expression {
     }
 
     //internal bool TryGetVariable(out short value) {
-    //    var oldPos = parser.LinePosition;
+    //    var oldPos = Parser.LinePosition;
     //    var rslt = false;
     //    value = 0;
     //    //two choices here - autoinit undeclared var to zero, or return false.
-    //    var c = parser.CurrentChar ?? ' ';
+    //    var c = Parser.CurrentChar ?? ' ';
     //    c = char.ToUpperInvariant(c);
     //    if (char.IsLetter(c)) {
-    //        var c2 = char.ToUpperInvariant(parser.NextChar ?? ' ');
+    //        var c2 = char.ToUpperInvariant(Parser.NextChar ?? ' ');
     //        if (!char.IsLetter(c2)) {
     //            //we found a variable (a single letter followed by nothing or a non-letter) (easy dumb parsing rule)
     //            var variableName = c.ToString();
-    //            parser.LinePosition++;
+    //            Parser.LinePosition++;
     //            Variable? vValue;
     //            if (VariableStore.Shared.Globals.TryGetValue(variableName, out vValue)) {
     //                var variableValue = vValue.ShortValue ?? 0;
@@ -314,17 +314,17 @@ internal class Expression {
     //        //the '@[n]' array
     //    }
     //    if (rslt == false) {
-    //        parser.LinePosition = oldPos;
+    //        Parser.LinePosition = oldPos;
     //    }
     //    return rslt;
     //}
 
     internal short ParenExpr() {
         short rslt = 0;
-        if (parser.ScanString("(")) {
+        if (Parser.ScanString("(")) {
             if (TryEvaluateExpr(out rslt)) {
-                parser.SkipSpaces();
-                if (!parser.ScanString(")")) {
+                Parser.SkipSpaces();
+                if (!Parser.ScanString(")")) {
                     throw new RuntimeException("Expected ')'.");
                 }
             } else {
@@ -337,13 +337,13 @@ internal class Expression {
     }
 
     internal bool TryGetParen(out short value) {
-        var oldPos = parser.LinePosition;
+        var oldPos = Parser.LinePosition;
         value = 0;
         var rslt = false;
-        if (parser.ScanString("(")) {
+        if (Parser.ScanString("(")) {
             if (TryEvaluateExpr(out value)) {
-                parser.SkipSpaces();
-                if (parser.ScanString(")")) {
+                Parser.SkipSpaces();
+                if (Parser.ScanString(")")) {
                     rslt = true;
                 }
             } else {
@@ -351,7 +351,7 @@ internal class Expression {
             }
         }
         if (rslt == false) {
-            parser.LinePosition = oldPos;
+            Parser.LinePosition = oldPos;
         }
         return rslt;
     }

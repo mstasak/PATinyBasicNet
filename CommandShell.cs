@@ -17,8 +17,8 @@ internal class CommandShell() {
     internal bool Exiting = false;
     internal bool SuppressPrompt = false; //skip prompt during repeated line additions
     internal string CommandLine = "";
-    internal ParserTools Parser = ParserTools.Shared;
-    internal Interpreter TBInterpreter = Interpreter.Shared;
+    internal CodeParser Parser = CodeParser.Shared;
+    internal CodeInterpreter Interpreter = CodeInterpreter.Shared;
 
     /// <summary>
     /// Runs a command loop, which prompts the user, accepts an input line,
@@ -89,8 +89,9 @@ internal class CommandShell() {
                 rslt = true;
                 break;
             case Commands.New:
-                TBInterpreter.ProgramSource.Clear();
-                TBInterpreter.LineLocations.Clear();
+                Interpreter.ProgramSource.Clear();
+                Interpreter.LineLocations.Clear();
+                Variable.VariableStore.Clear();
                 rslt = true;
                 break;
             case Commands.Load:
@@ -140,7 +141,7 @@ internal class CommandShell() {
         if (Parser.ScanInt(out lineNum)) {
             if (Parser.EoL()) {
                 //delete line if found
-                TBInterpreter.DeleteLine(lineNum);
+                Interpreter.DeleteLine(lineNum);
                 return;
             }
         }
@@ -152,12 +153,12 @@ internal class CommandShell() {
         if (Parser.ScanShort(out lineNum)) {
             if (Parser.EoL()) {
                 //delete line if found
-                TBInterpreter.DeleteLine(lineNum);
+                Interpreter.DeleteLine(lineNum);
                 SuppressPrompt = false;
             } else {
                 //add or replace line of code
                 _ = Parser.ScanChar(' ');
-                TBInterpreter.StoreLine(lineNum, Parser.Line[Parser.LinePosition..]);
+                Interpreter.StoreLine(lineNum, Parser.Line[Parser.LinePosition..]);
                 SuppressPrompt = true;
             }
             return true;
@@ -166,8 +167,8 @@ internal class CommandShell() {
     }
 
     internal bool TryStatements() {
-        TBInterpreter.ImmediateLine = Parser.Line;
-        TBInterpreter.Run(Immediate: true);
+        Interpreter.ImmediateLine = Parser.Line;
+        Interpreter.Run(Immediate: true);
         return true;
     }
 
@@ -175,7 +176,7 @@ internal class CommandShell() {
 
         var count = 0;
         var listParams = Parser.ScanLineRange();
-        foreach (var (linenum, src) in TBInterpreter.ProgramSource
+        foreach (var (linenum, src) in Interpreter.ProgramSource
             .Where (e => {
                 return (e.linenum >= listParams.low || listParams.low <= 0) &&
                        (e.linenum <= listParams.high || listParams.high <= 0) &&
@@ -189,6 +190,6 @@ internal class CommandShell() {
     }
 
     internal void RunProgram() {
-        TBInterpreter.Run(Immediate: false);
+        Interpreter.Run(Immediate: false);
     }
 }

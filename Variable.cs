@@ -75,9 +75,10 @@ internal class Variable {
                     totalElements *= dRange.high - dRange.low + 1;    
                 }
                 var arrVal = new short[totalElements];
-                var iVal = (short)(initVal ?? (short)0);
+                var iVal = (int)(initVal ?? 0);
+
                 for (var i = 0; i < arrVal.Length; i++) {
-                    arrVal[i] = iVal; //initVal should be a boxed short, such as (object)(short)0
+                    arrVal[i] = ((short)iVal); //initVal should be a boxed short, such as (object)(short)0
                 }
                 VValue = arrVal;
                 break;

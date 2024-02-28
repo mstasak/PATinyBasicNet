@@ -19,7 +19,7 @@ namespace NewPaloAltoTB;
 /**
  *   Creating a Windows version of Palo Alto Tiny Basic
  */
-internal partial class Interpreter {
+internal partial class CodeInterpreter {
     internal int LineNumber;
     internal int CurrentLineOrd;
     internal int NewLineOrd = -1;
@@ -30,13 +30,13 @@ internal partial class Interpreter {
     internal bool OutputSwitch = true;
     internal List<(int linenum, string src)> ProgramSource = [];
     internal Dictionary<int, int> LineLocations = []; //looks up ordinal position of a basic line# in Program
-    internal ParserTools parser = ParserTools.Shared;
+    internal CodeParser Parser = CodeParser.Shared;
     internal Expression ExpressionService = Expression.Shared;
     internal bool StopRequested = false;
     internal bool ImmediateMode = false;
     internal string CurrentFile => ImmediateMode ? "" : "FILE"; //in future will contain actual filename.bas path
-    internal static Interpreter Shared => shared.Value;
-    private static readonly Lazy<Interpreter> shared = new(() => new Interpreter());
+    internal static CodeInterpreter Shared => shared.Value;
+    private static readonly Lazy<CodeInterpreter> shared = new(() => new CodeInterpreter());
 
     /// <summary>
     /// Delete a given line from the program buffer (by vb line#).
@@ -101,12 +101,12 @@ internal partial class Interpreter {
     internal bool RunLine(string line, int lineNumber) {
         StopRequested = false;
         NewLineOrd = -1;
-        parser.SetLine(line: line, linePosition: 0, lineNumber: lineNumber);
+        Parser.SetLine(line: line, linePosition: 0, lineNumber: lineNumber);
         //TODO: figure out how to handle 1st return in case like '100 GOSUB 2000; GOSUB 3000'
         var statementSucceeded = true;
-        while (statementSucceeded && !parser.EoL() && NewLineOrd == -1) {
+        while (statementSucceeded && !Parser.EoL() && NewLineOrd == -1) {
             statementSucceeded = RunStatement();
-            _ = parser.ScanRegex("^\\s*;");
+            _ = Parser.ScanRegex("^\\s*;");
             if (StopRequested) {
                 break;
             }
@@ -176,7 +176,7 @@ internal partial class Interpreter {
         GotoStatement,
         GosubStatement,
         ReturnStatement,
-        DumpStatement,
+        DimStatement,
         /* future possibles:
          dim, global, sub, function, import/inherit/etc to access caller-scoped vars
         graphics subs/funcs
@@ -187,7 +187,7 @@ internal partial class Interpreter {
 
     internal bool RunStatement() {
         var rslt = false;
-        var whichStmt = parser.ScanStringTableEntry([
+        var whichStmt = Parser.ScanStringTableEntry([
             "LET",
             "INPUT",
             "PRINT",
@@ -202,6 +202,7 @@ internal partial class Interpreter {
             "GOTO",
             "GOSUB",
             "RETURN",
+            "DIM",
         ]);
         switch ((StatementCode?)whichStmt) {
             case StatementCode.LetStatement:
@@ -214,7 +215,7 @@ internal partial class Interpreter {
                 rslt = RunPrintStatement();
                 break;
             case StatementCode.RemStatement:
-                parser.LinePosition = parser.Line.Length;
+                Parser.LinePosition = Parser.Line.Length;
                 rslt = true;
                 break;
             case StatementCode.WaitStatement:
@@ -242,6 +243,9 @@ internal partial class Interpreter {
             case StatementCode.ReturnStatement:
                 rslt = RunReturnStatement();
                 break;
+            case StatementCode.DimStatement:
+                rslt = RunDimStatement();
+                break;
             default:
                 rslt = RunAssignmentStatement();
                 break;
@@ -256,7 +260,7 @@ internal partial class Interpreter {
                 rslt = false;
                 break;
             }
-            if (parser.ScanRegex("^\\s*,\\s*") == null) {
+            if (Parser.ScanRegex("^\\s*,\\s*") == null) {
                 break;
             }
         }
@@ -265,11 +269,11 @@ internal partial class Interpreter {
 
     internal bool RunOneAssignment() {
         var rslt = false;
-        var oldPos = parser.LinePosition;
+        var oldPos = Parser.LinePosition;
 
-        var lVal = parser.ScanLValue();
+        var lVal = Parser.ScanLValue();
         if (lVal != null) {
-            if (parser.ScanRegex("^\\s*=") != null) {
+            if (Parser.ScanRegex("^\\s*=") != null) {
                 short value;
                 if (ExpressionService.TryEvaluateExpr(out value)) {
                     lVal!.Value = value;
@@ -278,7 +282,7 @@ internal partial class Interpreter {
                     throw new RuntimeException("Expression expected.");
                 }
             } else {
-                parser.LinePosition = oldPos;
+                Parser.LinePosition = oldPos;
             }
         }
         return rslt;
@@ -314,8 +318,8 @@ internal partial class Interpreter {
     }
 
     internal bool TryPrintFormat() {
-        parser.SkipSpaces();
-        if (parser.ScanString("#")) {
+        Parser.SkipSpaces();
+        if (Parser.ScanString("#")) {
             short newWidth;
             if (ExpressionService.TryEvaluateExpr(out newWidth)) {
                 PrintNumWidth = newWidth;
@@ -335,7 +339,7 @@ internal partial class Interpreter {
         }
     }
     internal bool TryPrintStringLiteral() {
-        var sValue = parser.ScanStringLiteral();
+        var sValue = Parser.ScanStringLiteral();
         if (sValue != null) {
             Console.Write(sValue);
             DidPrintSomething = true;
@@ -351,7 +355,7 @@ internal partial class Interpreter {
             if (s == null) {
                 throw new RuntimeException("Unexpected end of file on console input.");
             }
-            var val = ParserTools.StrToShort(s);
+            var val = CodeParser.StrToShort(s);
             if (val.HasValue) {
                 rslt = val.Value;
                 break;
@@ -365,14 +369,14 @@ internal partial class Interpreter {
         var rslt = false;
 
         while (true) {
-            var prompt = parser.ScanStringLiteral();
+            var prompt = Parser.ScanStringLiteral();
             if (prompt == null) {
                 prompt = "?";
             } else {
-                parser.SkipSpaces();
-                parser.ScanString(",");  //accept comma between prompt and variable name, i.e. INPUT "AGE?" A or INPUT "AGE?", A
+                Parser.SkipSpaces();
+                Parser.ScanString(",");  //accept comma between prompt and variable name, i.e. INPUT "AGE?" A or INPUT "AGE?", A
             }
-            var lVal = parser.ScanLValue();
+            var lVal = Parser.ScanLValue();
             if (lVal == null) {
                 throw new RuntimeException("Variable name or array element expected.");
             }
@@ -380,7 +384,7 @@ internal partial class Interpreter {
             Console.WriteLine(prompt);
             var inputVal = GetUserInputShort();
             lVal!.Value = inputVal;
-            if (parser.ScanChar(',', true) == null) {
+            if (Parser.ScanChar(',', true) == null) {
                 break;    
             }
         }
@@ -389,12 +393,12 @@ internal partial class Interpreter {
     }
 
     internal bool TrySkipComma() {
-        parser.SkipSpaces();
-        return parser.ScanString(",");
+        Parser.SkipSpaces();
+        return Parser.ScanString(",");
     }
 
     internal bool RunWaitStatement() {
-        var prompt = parser.ScanStringLiteral() ?? "Press a key...";
+        var prompt = Parser.ScanStringLiteral() ?? "Press a key...";
         Console.WriteLine(prompt);
         Console.ReadKey();
         return true;
@@ -404,9 +408,9 @@ internal partial class Interpreter {
         short cond;
         if (ExpressionService.TryEvaluateExpr(out cond)) {
             rslt = true;
-            _ = parser.ScanString("THEN"); // THEN is optional
+            _ = Parser.ScanString("THEN"); // THEN is optional
             if (cond == 0) {
-                parser.LinePosition = parser.Line.Length; //if condition is false, ignore rest of line    
+                Parser.LinePosition = Parser.Line.Length; //if condition is false, ignore rest of line    
             }
         } else {
             throw new RuntimeException("Invalid If expression.");
@@ -415,18 +419,18 @@ internal partial class Interpreter {
     }
     internal bool RunForStatement() {
         //var = expr [down]to expr [step expr]
-        var varLValue = parser.ScanLValue();
+        var varLValue = Parser.ScanLValue();
         if (varLValue == null) {
             throw new RuntimeException("For loop variable name not found.");
         }
-        if (parser.ScanRegex("^\\s*=") == null) {
+        if (Parser.ScanRegex("^\\s*=") == null) {
             throw new RuntimeException("For loop syntax: expected '='.");
         }
         short initValue;
         if (!ExpressionService.TryEvaluateExpr(out initValue)) {
             throw new RuntimeException("For loop: error in initial value expression.");
         }
-        if (parser.ScanRegex("^\\s*to") == null) {
+        if (Parser.ScanRegex("^\\s*to") == null) {
             throw new RuntimeException("For loop syntax: expected \" TO \".");
         }
         short limitValue;
@@ -434,7 +438,7 @@ internal partial class Interpreter {
             throw new RuntimeException("For loop: error in limit value expression.");
         }
         short stepValue = 1;
-        if (parser.ScanRegex("^\\s*step") != null) {
+        if (Parser.ScanRegex("^\\s*step") != null) {
             if (!ExpressionService.TryEvaluateExpr(out stepValue)) {
                 throw new RuntimeException("For loop: error in step value expression.");
             }
@@ -449,7 +453,7 @@ internal partial class Interpreter {
         return true;
     }
     internal bool RunNextStatement() {
-        var varName = parser.ScanName();
+        var varName = Parser.ScanName();
         if (varName == null) {
             throw new RuntimeException("Expected: for loop variable name.");
         }
@@ -463,7 +467,7 @@ internal partial class Interpreter {
             int newOrd;
             if (LineLocations.TryGetValue(newLineNum, out newOrd)) {
                 NewLineOrd = newOrd; //run loop will transfer to this line
-                parser.LinePosition = parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
+                Parser.LinePosition = Parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
                 rslt = true;
             } else {
                 throw new RuntimeException($"Goto target line {newLineNum} not found.");
@@ -475,24 +479,21 @@ internal partial class Interpreter {
         return rslt;
     }
     internal bool RunGosubStatement() {
-        var rslt = false;
         short newLineNum;
         if (ExpressionService.TryEvaluateExpr(out newLineNum)) {
             int newOrd;
             if (LineLocations.TryGetValue(newLineNum, out newOrd)) {
                 NewLineOrd = newOrd; //run loop will transfer to this line
-                //parser.LinePosition = parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
-                parser.ScanRegex("^\\s*;"); //skip statement separator
+                //Parser.LinePosition = Parser.Line.Length; //ignore rest of line (could complain if not empty or REM...)
+                Parser.ScanRegex("^\\s*;"); //skip statement separator
                 ControlStack.Shared.Gosub(newLineNum, newOrd); //push return address onto control stack
-                rslt = true;
             } else {
                 throw new RuntimeException($"Gosubtarget line {newLineNum} not found.");
             }
         } else {
             throw new RuntimeException("Gosub target line number/expression not understood.");
         }
-
-        return rslt;
+        return true;
     }
     internal bool RunReturnStatement() {
         ControlStack.Shared.Return();
@@ -503,7 +504,69 @@ internal partial class Interpreter {
         LineNumber = ProgramSource[newLineOrder].linenum;
         CurrentLineOrd = newLineOrder;
         CurrentLine = ProgramSource[newLineOrder].src;
-        parser.SetLine(CurrentLine, 0, LineNumber);
+        Parser.SetLine(CurrentLine, 0, LineNumber);
+    }
+
+    internal enum ScalarType {
+        NoMatch,
+        ShortType,
+        IntType,
+        LongType,
+        DoubleType,
+        BoolType,
+        StringType,
+    };
+
+    internal static string[] ScalarTypes = ["short", "int", "long", "double", "bool", "string"];
+
+    internal bool RunDimStatement() {
+        //DIM has been encountered; expect these:
+        // DIM I|ARR\[arrayranges\] [,...]    ;REM DEFAULT TYPE INT?
+        // DIM AS type VAR|ARR\[arrayranges\] [,...]  ;REM do not allow multiple AS type phrases in one DIM instruction
+        // e.g. DIM AS INT I, J, COUNT=100, MYARRAY1[0..COUNT-1], ANOTHER_ARRAY[1 TO 5]
+        var positionSave = Parser.LinePosition;
+        var whichType = ScalarType.NoMatch;
+        if (Parser.ScanString("AS")) {
+            whichType = (ScalarType)Parser.ScanStringTableEntry(ScalarTypes);
+        } else {
+            whichType = ScalarType.ShortType;    
+        }
+        do {
+            var vName = Parser.ScanName();
+            if (vName == null) {
+                throw new RuntimeException("Expected: variable name");
+            }
+            var vRanges = Parser.ScanArrayDimensions();
+            if (vRanges == null) {
+                //scalar variable
+                if (Parser.ScanChar('=', true) != null) {
+                    short vVal;
+                    if (Expression.Shared.TryEvaluateExpr(out vVal)) {
+                        var vVar = Variable.FindVariable(vName);
+                        if (vVar == null) {
+                            vVar = new Variable(vName, vVal, true);
+                        } else {
+                            throw new RuntimeException($"Variable '{vName}' already exists!");
+                        }
+                    } else {
+                        throw new RuntimeException($"Expected: expression to initialize variable {vName}.");
+                    }
+                }
+            } else { 
+                //array variable
+                var vVar = Variable.FindVariable(vName);
+                if (vVar != null) {
+                    throw new RuntimeException($"Variable '{vName}' already exists!");
+                } else {
+                    var arrType = whichType switch {
+                        ScalarType.ShortType => VariableType.ShortArray,
+                        _ => throw new RuntimeException("Unknown or unsupported array element type"),
+                    };
+                    vVar = new Variable(vName: vName, vType: arrType, vDimensionRanges: vRanges, 0, true);                    
+                }
+            }
+        } while (Parser.ScanChar(',',true) != null);
+        return true;
     }
 }
 
@@ -725,14 +788,6 @@ EX5    MOV  A,M       ;LOAD HL WITH THE JUMP
 ;* FOR ALL OTHERS: IFF 'CURRNT' -> 0, GO TO 'RSTART', ELSE
 ;* GO EXECUTE NEXT COMMAND.  (THIS IS DONE IN 'FINISH'.)
 ;*
-;**************************************************************
-;*
-;* *** NEW *** STOP *** RUN (& FRIENDS) *** & GOTO ***
-;*
-;* 'NEW(CR)' SETS 'TXTUNF' TO POINT TO 'TXTBGN'
-;*
-;* 'STOP(CR)' GOES BACK TO 'RSTART'
-;*
 ;* 'RUN(CR)' FINDS THE FIRST STORED LINE, STORE ITS ADDRESS (IN
 ;* 'CURRNT'), AND START EXECUTE IT.  NOTE THAT ONLY THOSE
 ;* COMMANDS IN TAB2 ARE LEGAL FOR STORED PROGRAM.
@@ -748,16 +803,6 @@ EX5    MOV  A,M       ;LOAD HL WITH THE JUMP
 ;* 'DSAVE' SAVES A NAMED PROGRAM ON DISK.
 ;* 'FCBSET' SETS UP THE FILE CONTROL BLOCK FOR SUBSEQUENT DISK I/O.
 ;*
-NEW    CALL ENDCHK    ;*** NEW(CR) ***
-       LXI  H,TXTBGN
-       SHLD TXTUNF
-;*
-STOP   CALL ENDCHK    ;*** STOP(CR) ***
-       JMP RSTART
-;*
-RUN    CALL ENDCHK    ;*** RUN(CR) ***
-       LXI  D,TXTBGN  ;FIRST SAVED LINE
-;*
 RUNNXL LXI  H,0       ;*** RUNNXL ***
        CALL FNDLNP    ;FIND WHATEVER LINE #
        JC   RSTART    ;C:PASSED TXTUNF, QUIT
@@ -772,13 +817,6 @@ RUNSML CALL CHKIO     ;*** RUNSML ***
        LXI  H,TAB2-1  ;FIND COMMAND IN TAB2
        JMP  EXEC      ;AND EXECUTE IT
 ;*
-GOTO   RST  3         ;*** GOTO EXPR ***
-       PUSH D         ;SAVE FOR ERROR ROUTINE
-       CALL ENDCHK    ;MUST FIND A 0DH
-       CALL FNDLN     ;FIND THE TARGET LINE
-       JNZ  AHOW      ;NO SUCH LINE #
-       POP  PSW       ;CLEAR THE "PUSH DE"
-       JMP  RUNTSL    ;GO DO IT
 ;CPM    =  5         ;DISK PARAMETERS
 ;FCB    =  $5C
 ;SETDMA =  26
@@ -902,361 +940,6 @@ GOTO   RST  3         ;*** GOTO EXPR ***
 ;       CMP  L         ;LAST?
 ;       JNZ  FN        ;NO, CONTINUE
 ;       RET            ;TRUNCATE AT 8 CHARACTERS
-;*
-;*************************************************************
-;*
-;* *** LIST *** & PRINT ***
-;*
-;* LIST HAS TWO FORMS:
-;* 'LIST(CR)' LISTS ALL SAVED LINES
-;* 'LIST #(CR)' START LIST AT THIS LINE #
-;* YOU CAN STOP THE LISTING BY CONTROL C KEY
-;*
-;* PRINT COMMAND IS 'PRINT ....;' OR 'PRINT ....(CR)'
-;* WHERE '....' IS A LIST OF EXPRESIONS, FORMATS, BACK-
-;* ARROWS, AND STRINGS.  THESE ITEMS ARE SEPERATED BY COMMAS.
-;*
-;* A FORMAT IS A POUND SIGN FOLLOWED BY A NUMBER.  IT CONTROLSs
-;* THE NUMBER OF SPACES THE VALUE OF A EXPRESION IS GOING TO
-;* BE PRINTED.  IT STAYS EFFECTIVE FOR THE REST OF THE PRINT
-;* COMMAND UNLESS CHANGED BY ANOTHER FORMAT.  IFF NO FORMAT IS
-;* SPECIFIED, 6 POSITIONS WILL BE USED.
-;*
-;* A STRING IS QUOTED IN A PAIR OF SINGLE QUOTES OR A PAIR OF
-;* DOUBLE QUOTES.
-;*
-;* A BACK-ARROW MEANS GENERATE A (CR) WITHOUT (LF)
-;*
-;* A (CRLF) IS GENERATED AFTER THE ENTIRE LIST HAS BEEN
-;* PRINTED OR IFF THE LIST IS A NULL LIST.  HOWEVER IFF THE LIST
-;* ENDED WITH A COMMA, NO (CRL) IS GENERATED.
-;*
-LIST   CALL TSTNUM    ;TEST IFF THERE IS A #
-       CALL ENDCHK    ;IFF NO # WE GET A 0
-       CALL FNDLN     ;FIND THIS OR NEXT LINE
-LS1    JC   RSTART    ;C:PASSED TXTUNF
-       CALL PRTLN     ;PRINT THE LINE
-       CALL CHKIO     ;STOP IFF HIT CONTROL-C
-       CALL FNDLNP    ;FIND NEXT LINE
-       JMP  LS1       ;AND LOOP BACK
-;*
-PRINT  MVI  C,6       ;C = # OF SPACES
-       RST  1         ;IFF NULL LIST & ";"
-      .byte   0o73
-      .byte   6
-       CALL CRLF      ;GIVE CR-LF AND
-       JMP  RUNSML    ;CONTINUE SAME LINE
-PR2    RST  1         ;IFF NULL LIST (CR)
-      .byte   '\r'
-      .byte   6
-       CALL CRLF      ;ALSO GIVE CR-LF &
-       JMP  RUNNXL    ;GO TO NEXT LINE
-PR0    RST  1         ;ELSE IS IT FORMAT?
-      .byte   '#'
-      .byte   5
-       RST  3         ;YES, EVALUATE EXPR.
-       MOV  C,L       ;AND SAVE IT IN C
-       JMP  PR3       ;LOOK FOR MORE TO PRINT
-PR1    CALL QTSTG     ;OR IS IT A STRING?
-       JMP  PR8       ;IFF NOT, MUST BE EXPR.
-PR3    RST  1         ;IFF ",", GO FIND NEXT
-      .byte   ','
-      .byte   6
-       CALL FIN       ;IN THE LIST.
-       JMP  PR0       ;LIST CONTINUES
-PR6    CALL CRLF      ;LIST ENDS
-       RST  6
-PR8    RST  3         ;EVALUATE THE EXPR
-       PUSH B
-       CALL PRTNUM    ;PRINT THE VALUE
-       POP  B
-       JMP  PR3       ;MORE TO PRINT?
-;*
-;**************************************************************
-;*
-;* *** GOSUB *** & RETURN ***
-;*
-;* 'GOSUB EXPR;' OR 'GOSUB EXPR (CR)' IS LIKE THE 'GOTO'
-;* COMMAND, EXCEPT THAT THE CURRENT TEXT POINTER, STACK POINTER
-;* ETC. ARE SAVE SO THAT EXECUTION CAN BE CONTINUED AFTER THE
-;* SUBROUTINE 'RETURN'.  IN ORDER THAT 'GOSUB' CAN BE NESTED
-;* (AND EVEN RECURSIVE), THE SAVE AREA MUST BE STACKED.
-;* THE STACK POINTER IS SAVED IN 'STKGOS'. THE OLD 'STKGOS' IS
-;* SAVED IN THE STACK.  IFF WE ARE IN THE MAIN ROUTINE, 'STKGOS'
-;* IS ZERO (THIS WAS DONE BY THE "MAIN" SECTION OF THE CODE),
-;* BUT WE STILL SAVE IT AS A FLAG FORr NO FURTHER 'RETURN'S.
-;*
-;* 'RETURN(CR)' UNDOS EVERYHING THAT 'GOSUB' DID, AND THUS
-;* RETURN THE EXCUTION TO THE COMMAND AFTER THE MOST RECENT
-;* 'GOSUB'.  IFF 'STKGOS' IS ZERO, IT INDICATES THAT WE
-;* NEVER HAD A 'GOSUB' AND IS THUS AN ERROR.
-;*
-GOSUB  CALL PUSHA     ;SAVE THE CURRENT "FOR"
-       RST  3         ;PARAMETERS
-       PUSH D         ;AND TEXT POINTER
-       CALL FNDLN     ;FIND THE TARGET LINE
-       JNZ  AHOW      ;NOT THERE. SAY "HOW?"
-       LHLD CURRNT    ;FOUND IT, SAVE OLD
-       PUSH H         ;'CURRNT' OLD 'STKGOS'
-       LHLD STKGOS
-       PUSH H
-       LXI  H,0       ;AND LOAD NEW ONES
-       SHLD LOPVAR
-       DAD  SP
-       SHLD STKGOS
-       JMP  RUNTSL    ;THEN RUN THAT LINE
-RETURN CALL ENDCHK    ;THERE MUST BE A 0DH
-       LHLD STKGOS    ;OLD STACK POINTER
-       MOV  A,H       ;0 MEANS NOT EXIST
-       ORA  L
-       JZ   QWHAT     ;SO, WE SAY: "WHAT?"
-       SPHL           ;ELSE, RESTORE IT
-       POP  H
-       SHLD STKGOS    ;AND THE OLD 'STKGOS'
-       POP  H
-       SHLD CURRNT    ;AND THE OLD 'CURRNT'
-       POP  D         ;OLD TEXT POINTER
-       CALL POPA      ;OLD "FOR" PARAMETERS
-       RST  6         ;AND WE ARE BACK HOME
-;*
-;**************************************************************
-;*
-;* *** FOR *** & NEXT ***
-;*
-;* 'FOR' HAS TWO FORMS:
-;* 'FOR VAR=EXP1 TO EXP2 STEP EXP1' AND 'FOR VAR=EXP1 TO EXP2'
-;* THE SECOND FORM MEANS THE SAME THING AS THE FIRST FORM WITH
-;* EXP1=1.  (I.E., WITH A STEP OF +1.)
-;* TBI WILL FIND THE VARIABLE VAR. AND SET ITS VALUE TO THE
-;* CURRENT VALUE OF EXP1.  IT ALSO EVALUATES EXPR2 AND EXP1
-;* AND SAVE ALL THESE TOGETHER WITH THE TEXT POINTERr ETC. IN
-;* THE 'FOR' SAVE AREA, WHICH CONSISTS OF 'LOPVAR', 'LOPINC',
-;* 'LOPLMT', 'LOPLN', AND 'LOPPT'.  IFF THERE IS ALREADY SOME-
-;* THING IN THE SAVE AREA (THIS IS INDICATED BY A NON-ZERO
-;* 'LOPVAR'), THEN THE OLD SAVE AREA IS SAVED IN THE STACK
-;* BEFORE THE NEW ONE OVERWRITES IT.
-;* TBI WILL THEN DIG IN THE STACK AND FIND OUT IFF THIS SAME
-;* VARIABLE WAS USED IN ANOTHER CURRENTLY ACTIVE 'FOR' LOOP.
-;* IFF THAT IS THE CASE THEN THE OLD 'FOR' LOOP IS DEACTIVATED.
-;* (PURGED FROM THE STACK..)
-;*
-;* 'NEXT VAR' SERVES AS THE LOGICAL (NOT NECESSARILLY PHYSICAL)
-;* END OF THE 'FOR' LOOP.  THE CONTROL VARIABLE VAR. IS CHECKED
-;* WITH THE 'LOPVAR'.  IFF THEY ARE NOT THE SAME, TBI DIGS IN
-;* THE STACK TO FIND THE RIGHTt ONE AND PURGES ALL THOSE THAT
-;* DID NOT MATCH.  EITHER WAY, TBI THEN ADDS THE 'STEP' TO
-;* THAT VARIABLE AND CHECK THE RESULT WITH THE LIMIT.  IFF IT
-;* IS WITHIN THE LIMIT, CONTROL LOOPS BACK TO THE COMMAND
-;* FOLLOWING THE 'FOR'.  IFF OUTSIDE THE LIMIT, THE SAVE ARER
-;* IS PURGED AND EXECUTION CONTINUES.
-;*
-FOR    CALL PUSHA     ;SAVE THE OLD SAVE AREA
-       CALL SETVAL    ;SET THE CONTROL VAR.
-       DCX  H         ;HL IS ITS ADDRESS
-       SHLD LOPVAR    ;SAVE THAT
-       LXI  H,TAB5-1  ;USE 'EXEC' TO LOOK
-       JMP  EXEC      ;FOR THE WORD 'TO'
-FR1    RST  3         ;EVALUATE THE LIMIT
-       SHLD LOPLMT    ;SAVE THAT
-       LXI  H,TAB6-1  ;USE 'EXEC' TO LOOK
-       JMP  EXEC      ;FOR THE WORD 'STEP'
-FR2    RST  3         ;FOUND IT, GET STEP
-       JMP  FR4
-FR3    LXI  H,1       ;NOT FOUND, SET TO 1
-FR4    SHLD LOPINC    ;SAVE THAT TOO
-FR5    LHLD CURRNT    ;SAVE CURRENT LINE #
-       SHLD LOPLN
-       XCHG           ;AND TEXT POINTER
-       SHLD LOPPT
-       LXI  B,10      ;DIG INTO STACK TO
-       LHLD LOPVAR    ;FIND 'LOPVAR'
-       XCHG
-       MOV  H,B
-       MOV  L,B       ;HL=0 NOW
-       DAD  SP        ;HERE IS THE STACK
-      .byte   0o76
-FR7    DAD  B         ;EACH LEVEL IS 10 DEEP
-       MOV  A,M       ;GET THAT OLD 'LOPVAR'
-       INX  H
-       ORA  M
-       JZ   FR8       ;0 SAYS NO MORE IN IT
-       MOV  A,M
-       DCX  H
-       CMP  D         ;SAME AS THIS ONE?
-       JNZ  FR7
-       MOV  A,M       ;THE OTHER HALF?
-       CMP  E
-       JNZ  FR7
-       XCHG           ;YES, FOUND ONE
-       LXI  H,0o0
-       DAD  SP        ;TRY TO MOVE SP
-       MOV  B,H
-       MOV  C,L
-       LXI  H,0o12
-       DAD  D
-       CALL MVDOWN    ;AND PURGE 10 WORDS
-       SPHL           ;IN THE STACK
-FR8    LHLD LOPPT     ;JOB DONE, RESTORE DE
-       XCHG
-       RST  6         ;AND CONTINUE
-;*
-NEXT   RST  7         ;GET ADDRESS OF VAR.
-       JC   QWHAT     ;NO VARIABLE, "WHAT?"
-       SHLD VARNXT    ;YES, SAVE IT
-NX0    PUSH D         ;SAVE TEXT POINTER
-       XCHG
-       LHLD LOPVAR    ;GET VAR. IN 'FOR'
-       MOV  A,H
-       ORA  L         ;0 SAYS NEVER HAD ONE
-       JZ   AWHAT     ;SO WE ASK: "WHAT?"
-       RST  4         ;ELSE WE CHECK THEM
-       JZ   NX3       ;OK, THEY AGREE
-       POP  D         ;NO, LET'S SEE
-       CALL POPA      ;PURGE CURRENT LOOP
-       LHLD VARNXT    ;AND POP ONE LEVEL
-       JMP  NX0       ;GO CHECK AGAIN
-NX3    MOV  E,M       ;COME HERE WHEN AGREED
-       INX  H
-       MOV  D,M       ;DE=VALUE OF VAR.
-       LHLD LOPINC
-       PUSH H
-       DAD  D         ;ADD ONE STEP
-       XCHG
-       LHLD LOPVAR    ;PUT IT BACK
-       MOV  M,E
-       INX  H
-       MOV  M,D
-       LHLD LOPLMT    ;HL->LIMIT
-       POP  PSW       ;OLD HL
-       ORA  A
-       JP   NX1       ;STEP > 0
-       XCHG
-NX1    CALL CKHLDE    ;COMPARE WITH LIMIT
-       POP  D         ;RESTORE TEXT POINTER
-       JC   NX2       ;OUTSIDE LIMIT
-       LHLD LOPLN     ;WITHIN LIMIT, GO
-       SHLD CURRNT    ;BACK TO THE SAVED
-       LHLD LOPPT     ;'CURRNT' AND TEXT
-       XCHG           ;POINTER
-       RST  6
-NX2    CALL POPA      ;PURGE THIS LOOP
-       RST  6
-;*
-;**************************************************************
-;*
-;* *** REM *** IFF *** INPUT *** & LET (& DEFLT) ***
-;*
-;* 'REM' CAN BE FOLLOWED BY ANYTHING AND IS IGNORED BY TBI.
-;* TBI TREATS IT LIKE AN 'IF' WITH A FALSE CONDITION.
-;*
-;* 'IF' IS FOLLOWED BY AN EXPR. AS A CONDITION AND ONE OR MORE
-;* COMMANDS (INCLUDING OUTHER 'IF'S) SEPERATED BY SEMI-COLONS.
-;* NOTE THAT THE WORD 'THEN' IS NOT USED.  TBI EVALUATES THE
-;* EXPR. IFF IT IS NON-ZERO, EXECUTION CONTINUES.  IFF THE
-;* EXPR. IS ZERO, THE COMMANDS THAT FOLLOWS ARE IGNORED AND
-;* EXECUTION CONTINUES AT THE NEXT LINE.
-;*
-;* 'IPUT' COMMAND IS LIKE THE 'PRINT' COMMAND, AND IS FOLLOWED
-;* BY A LIST OF ITEMS.  IFF THE ITEM IS A STRING IN SINGLE OR
-;* DOUBLE QUOTES, OR IS A BACK-ARROW, IT HAS THE SAME EFFECT AS
-;* IN 'PRINT'.  IFF AN ITEM IS A VARIABLE, THIS VARIABLE NAME IS
-;* PRINTED OUT FOLLOWED BY A COLON.  THEN TBI WAITS FOR AN
-;* EXPR. TO BE TYPED IN.  THE VARIABLE ISs THEN SET TO THE
-;* VALUE OF THIS EXPR.  IFF THE VARIABLE IS PROCEDED BY A STRING
-;* (AGAIN IN SINGLE OR DOUBLE QUOTES), THE STRING WILL BE
-;* PRINTED FOLLOWED BY A COLON.  TBI THEN WAITS FOR INPUT EXPR.
-;* AND SET THE VARIABLE TO THE VALUE OF THE EXPR.
-;*
-;* IFF THE INPUT EXPR. IS INVALID, TBI WILL PRINT "WHAT?",
-;* "HOW?" OR "SORRY" AND REPRINT THE PROMPT AND REDO THE INPUT.
-;* THE EXECUTION WILL NOT TERMINATE UNLESS YOU TYPE CONTROL-C.
-;* THIS IS HANDLED IN 'INPERR'.
-;*
-;* 'LET' IS FOLLOWED BY A LIST OF ITEMS SEPERATED BY COMMAS.
-;* EACH ITEM CONSISTS OF A VARIABLE, AN EQUAL SIGN, AND AN EXPR.
-;* TBI EVALUATES THE EXPR. AND SET THE VARIBLE TO THAT VALUE.
-;* TB WILL ALSO HANDLE 'LET' COMMAND WITHOUT THE WORD 'LET'.
-;* THIS IS DONE BY 'DEFLT'.
-;*
-REM    LXI  H,0o0     ;*** REM ***
-      .byte   0o76
-;*
-IFF    RST  3         ;*** IFF ***
-       MOV  A,H       ;IS THE EXPR.=0?
-       ORA  L
-       JNZ  RUNSML    ;NO, CONTINUE
-       CALL FNDSKP    ;YES, SKIP REST OF LINE
-       JNC  RUNTSL
-       JMP  RSTART
-;*
-INPERR LHLD STKINP    ;*** INPERR ***
-       SPHL           ;RESTORE OLD SP
-       POP  H         ;AND OLD 'CURRNT'
-       SHLD CURRNT
-       POP  D         ;AND OLD TEXT POINTER
-       POP  D         ;REDO INPUT
-;*
-INPUT  =    *         ;*** INPUT ***
-IP1    PUSH D         ;SAVE IN CASE OF ERROR
-       CALL QTSTG     ;IS NEXT ITEM A STRING?
-       JMP  IP2       ;NO
-       RST  7         ;YES. BUT FOLLOWED BY A
-       JC   IP4       ;VARIABLE?   NO.
-       JMP  IP3       ;YES.  INPUT VARIABLE
-IP2    PUSH D         ;SAVE FOR 'PRTSTG'
-       RST  7         ;MUST BE VARIABLE NOW
-       JC   QWHAT     ;"WHAT?" IT IS NOT?
-       LDAX D         ;GET READY FOR 'RTSTG'
-       MOV  C,A
-       SUB  A
-       STAX D
-       POP  D
-       CALL PRTSTG    ;PRINT STRING AS PROMPT
-       MOV  A,C       ;RESTORE TEXT
-       DCX  D
-       STAX D
-IP3    PUSH D         ;SAVE IN CASE OF ERROR
-       XCHG
-       LHLD CURRNT    ;ALSO SAVE 'CURRNT'
-       PUSH H
-       LXI  H,IP1     ;A NEGATIVE NUMBER
-       SHLD CURRNT    ;AS A FLAG
-       LXI  H,0        ;SAVE SP TOO
-       DAD  SP
-       SHLD STKINP
-       PUSH D         ;OLD HL
-       MVI  A,0o72     ;PRINT THIS TOO
-       CALL GETLN     ;AND GET A LINE
-IP3A   LXI  D,BUFFER  ;POINTS TO BUFFER
-       RST  3         ;EVALUATE INPUT
-       NOP            ;CAN BE 'CALL ENDCHK'
-       NOP
-       NOP
-       POP  D         ;OK, GET OLD HL
-       XCHG
-       MOV  M,E       ;SAVE VALUE IN VAR.
-       INX  H
-       MOV  M,D
-       POP  H         ;GET OLD 'CURRNT'
-       SHLD CURRNT
-       POP  D         ;AND OLD TEXT POINTER
-IP4    POP  PSW       ;PURGE JUNK IN STACK
-       RST  1         ;IS NEXT CH. ','?
-      .byte   ','
-      .byte   3
-       JMP  IP1       ;YES, MORE ITEMS.
-IP5    RST  6
-;*
-DEFLT  LDAX D         ;*** DEFLT ***
-       CPI  $0D       ;EMPTY LINE IS OK
-       JZ   LT1       ;ELSE IT IS 'LET'
-;*
-LET    CALL SETVAL    ;*** LET ***
-       RST  1         ;SET VALUE TO VAR.
-      .byte   ','
-      .byte   3
-       JMP  LET       ;ITEM BY ITEM
-LT1    RST  6         ;UNTIL FINISH
 ;*
 RND    CALL PARN      ;*** RND(EXPR) ***
        MOV  A,H       ;EXPR MUST BE +

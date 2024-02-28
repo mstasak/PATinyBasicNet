@@ -15,23 +15,23 @@ internal class ControlStack {
     internal static ControlStack Shared => shared.Value;
     private static readonly Lazy<ControlStack> shared = new(() => new ControlStack());
 
-    internal Interpreter TBInterpreter = Interpreter.Shared;
-    internal ParserTools parser = ParserTools.Shared;
+    internal CodeInterpreter Interpreter = CodeInterpreter.Shared;
+    internal CodeParser Parser = CodeParser.Shared;
 
     internal StackLevelInfo? ForLoopBegin(LValue lValue, short initialVal, short stepVal, short limitVal) {
-        if (parser.ScanRegex("^\\s*;") != null) {
+        if (Parser.ScanRegex("^\\s*;") != null) {
         } else {
             //should be at eol()
-            parser.SkipSpaces();
-            if (!parser.EoL()) {
+            Parser.SkipSpaces();
+            if (!Parser.EoL()) {
                 throw new RuntimeException("Expected ';' or end of line.");
             }
         }
 
-        var level = new StackLevelInfo(file: TBInterpreter.CurrentFile,
-                                       lineNum: parser.LineNumber,
-                                       colNum: parser.LinePosition,
-                                       srcLine: parser.Line);
+        var level = new StackLevelInfo(file: Interpreter.CurrentFile,
+                                       lineNum: Parser.LineNumber,
+                                       colNum: Parser.LinePosition,
+                                       srcLine: Parser.Line);
         //EndPoint = null; //unknown at this time
         level.ForLValue = lValue;
         level.ForInitial = initialVal;
@@ -54,17 +54,17 @@ internal class ControlStack {
         if (endFor == null) {
             throw new RuntimeException("Cannot find next statement to exit for loop.");
         } else {
-            //DIRTY CODE!  poke a new location into ITBInterpreter and parser.
-            if (TBInterpreter.LineNumber == 0) { //interactive
-                                                 //TBInterpreter.CurrentLine = ;
-                                                 //TBInterpreter.LineNumber = ;
-                                                 //TBInterpreter.CurrentLineOrd = ;
-                parser.LinePosition = endFor.ColumnPosition;
+            //DIRTY CODE!  poke a new location into Interpreter and Parser.
+            if (Interpreter.LineNumber == 0) { //interactive
+                                               //Interpreter.CurrentLine = ;
+                                               //Interpreter.LineNumber = ;
+                                               //Interpreter.CurrentLineOrd = ;
+                Parser.LinePosition = endFor.ColumnPosition;
             } else {
-                TBInterpreter.CurrentLine = TBInterpreter.ProgramSource[TBInterpreter.LineLocations[(short)endFor.LineNumber]].src;
-                TBInterpreter.LineNumber = endFor.LineNumber;
-                TBInterpreter.CurrentLineOrd = TBInterpreter.LineLocations[(short)endFor.LineNumber];
-                parser.SetLine(line: TBInterpreter.CurrentLine,
+                Interpreter.CurrentLine = Interpreter.ProgramSource[Interpreter.LineLocations[(short)endFor.LineNumber]].src;
+                Interpreter.LineNumber = endFor.LineNumber;
+                Interpreter.CurrentLineOrd = Interpreter.LineLocations[(short)endFor.LineNumber];
+                Parser.SetLine(line: Interpreter.CurrentLine,
                     linePosition: endFor.ColumnPosition,
                     lineNumber: endFor.LineNumber);
             }
@@ -91,19 +91,19 @@ internal class ControlStack {
                 if (loopEnded) {
                     ForLoopEnd();
                 } else {
-                    //DIRTY CODE!  poke a new location into TBInterpreter and parser.  Should add a method to jump to new loc...
+                    //DIRTY CODE!  poke a new location into Interpreter and Parser.  Should add a method to jump to new loc...
                     if (lvl.EntryPoint.LineNumber == 0) { //interactive
-                        //TBInterpreter.CurrentLine = ;
-                        //TBInterpreter.LineNumber = ;
-                        //TBInterpreter.CurrentLineOrd = ;
-                        parser.LinePosition = lvl.EntryPoint.ColumnPosition;
+                        //Interpreter.CurrentLine = ;
+                        //Interpreter.LineNumber = ;
+                        //Interpreter.CurrentLineOrd = ;
+                        Parser.LinePosition = lvl.EntryPoint.ColumnPosition;
                     } else {
-                        TBInterpreter.CurrentLine = TBInterpreter.ProgramSource[TBInterpreter.LineLocations[(short)lvl.EntryPoint.LineNumber]].src;
-                        TBInterpreter.LineNumber = lvl.EntryPoint.LineNumber;
-                        TBInterpreter.CurrentLineOrd = TBInterpreter.LineLocations[(short)lvl.EntryPoint.LineNumber];
-                        parser.SetLine(line:TBInterpreter.CurrentLine,
-                            linePosition:lvl.EntryPoint.ColumnPosition,
-                            lineNumber:lvl.EntryPoint.LineNumber);
+                        Interpreter.CurrentLine = Interpreter.ProgramSource[Interpreter.LineLocations[(short)lvl.EntryPoint.LineNumber]].src;
+                        Interpreter.LineNumber = lvl.EntryPoint.LineNumber;
+                        Interpreter.CurrentLineOrd = Interpreter.LineLocations[(short)lvl.EntryPoint.LineNumber];
+                        Parser.SetLine(line: Interpreter.CurrentLine,
+                            linePosition: lvl.EntryPoint.ColumnPosition,
+                            lineNumber: lvl.EntryPoint.LineNumber);
                     }
 
                 }
@@ -117,38 +117,38 @@ internal class ControlStack {
 
     internal void ForLoopEnd() {
         // just completed "next variablename"; get ready to run first statement after next
-        _ = parser.ScanRegex("^\\s*;");
+        _ = Parser.ScanRegex("^\\s*;");
         _ = TBStack.Pop();
     }
 
     internal StackLevelInfo Gosub(short newLineNumber, int newLineOrd) {
         //push current program point (1st statement after gosub)
-        var level = new StackLevelInfo(file: TBInterpreter.CurrentFile,
-                                       lineNum: parser.LineNumber,
-                                       colNum: parser.LinePosition,
-                                       srcLine: parser.Line);
+        var level = new StackLevelInfo(file: Interpreter.CurrentFile,
+                                       lineNum: Parser.LineNumber,
+                                       colNum: Parser.LinePosition,
+                                       srcLine: Parser.Line);
         //EndPoint = null; //unknown at this time
         level.Kind = StackEntryKind.Gosub;
         TBStack.Push(level);
-        //stuff new loc into TBInterpreter, parser (just like goto)
-        TBInterpreter.JumpToLine(newLineOrd);
+        //stuff new loc into Interpreter, Parser (just like goto)
+        Interpreter.JumpToLine(newLineOrd);
         return level;
     }
 
     internal void Return() {
         var returnPoint = TBStack.Pop();
 
-        //DIRTY CODE!  poke a new location into ITBInterpreter and parser.
-        TBInterpreter.CurrentLine = returnPoint.EntryPoint.SrcLine;
-        TBInterpreter.LineNumber = returnPoint.EntryPoint.LineNumber;
+        //DIRTY CODE!  poke a new location into Interpreter and Parser.
+        Interpreter.CurrentLine = returnPoint.EntryPoint.SrcLine;
+        Interpreter.LineNumber = returnPoint.EntryPoint.LineNumber;
         if (returnPoint.EntryPoint.LineNumber == 0) {
-            TBInterpreter.CurrentLineOrd = -1;
+            Interpreter.CurrentLineOrd = -1;
         } else {
-            TBInterpreter.CurrentLineOrd = TBInterpreter.LineLocations[returnPoint.EntryPoint.LineNumber];
+            Interpreter.CurrentLineOrd = Interpreter.LineLocations[returnPoint.EntryPoint.LineNumber];
         }
-        parser.SetLine(line: returnPoint.EntryPoint.SrcLine!,
+        Parser.SetLine(line: returnPoint.EntryPoint.SrcLine!,
             linePosition: returnPoint.EntryPoint.ColumnPosition,
             lineNumber: returnPoint.EntryPoint.LineNumber);
-        
+
     }
 }

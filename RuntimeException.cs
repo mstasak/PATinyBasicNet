@@ -10,9 +10,9 @@ internal class RuntimeException: Exception {
     internal RuntimeException(string messageDetail) {
         MessageDetail = messageDetail;
     }
-    internal string FormatedMessage(Interpreter env) {
+    internal string FormatedMessage(CodeInterpreter env) {
         return MessageDetail + "\r\n" +
-            ParserTools.Shared.Line + "\r\n" +
-            new string(' ', ParserTools.Shared.LinePosition) + "^\r\n";
+            CodeParser.Shared.Line + "\r\n" +
+            new string(' ', CodeParser.Shared.LinePosition) + "^\r\n";
     }
 }
