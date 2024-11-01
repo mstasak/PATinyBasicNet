@@ -131,7 +131,7 @@ internal class CommandShell() {
     internal void DumpVariables() {
         Console.WriteLine("Variables:");
         foreach (var (key, var) in Variable.VariableStore.OrderBy(e => e.Value.VType).ThenBy(e => e.Key)) {
-            Console.WriteLine($"{key.PadRight(10)} = {var.ShortValue}");
+            Console.WriteLine($"{key.PadRight(10)} = {var.VValue}");
         }
     }
 

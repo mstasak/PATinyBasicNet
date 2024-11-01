@@ -9,7 +9,7 @@ namespace NewPaloAltoTB;
 /// <summary>
 /// Expression evaluation service
 /// </summary>
-internal class Expression {
+internal class Expression: IExpression {
 
     /// <summary>
     /// Accessable singleton object for this class.
@@ -21,11 +21,11 @@ internal class Expression {
 
     /// <summary>
     /// Evaluate an expression fragment, at 1st level of operator precedence (comparison operators).
-    /// This operator cannot be repeated (1<2<3 and a=b=c are illegal).
+    /// This type of operation cannot be repeated (1<2<3 and a=b=c are illegal).
     /// </summary>
     /// <returns>Signed short value of expression, if successful</returns>
     /// <exception cref="RuntimeException">Thrown if parsing or calculation fails</exception>
-    internal bool TryEvaluateExpr(out short value) {
+    public bool TryEvaluateExpr(out short value) {
         /*
             ;*
             ;**************************************************************
@@ -49,7 +49,7 @@ internal class Expression {
             ;*
          */
         int? a, b;
-        var oldLinePos = Parser.LinePosition;
+        //var oldLinePos = Parser.LinePosition;
         try {
             a = TryExprComparisonTerm();
             if (a == null) {
@@ -90,7 +90,7 @@ internal class Expression {
     /// </summary>
     /// <returns></returns>
     /// <exception cref="RuntimeException"></exception>
-    internal short? TryExprComparisonTerm() {
+    private short? TryExprComparisonTerm() {
         int? a, b;
         if (Parser.ScanString("-")) {
             //- prefix
@@ -126,7 +126,7 @@ internal class Expression {
         return (short)a;
     }
 
-    internal short? TryExprAddSubTerm() {
+    private short? TryExprAddSubTerm() {
         int? a, b;
         a = TryExprMulDivTerm();
         if (a == null) {
@@ -163,7 +163,7 @@ internal class Expression {
         return (short)a;
     }
 
-    internal short? TryExprMulDivTerm() {
+    private short? TryExprMulDivTerm() {
         //test for fn
         short rslt;
         Parser.SkipSpaces();
@@ -177,7 +177,7 @@ internal class Expression {
         return rslt;
     }
 
-    internal bool TryGetFunction(out short value) {
+    private bool TryGetFunction(out short value) {
         var oldPos = Parser.LinePosition;
         var rslt = false;
         value = 0;
@@ -220,7 +220,7 @@ internal class Expression {
         return rslt;
     }
 
-    internal bool TryGetVariable(out short value) {
+    private bool TryGetVariable(out short value) {
         var oldPos = Parser.LinePosition;
         var rslt = false;
         value = 0;
@@ -234,7 +234,7 @@ internal class Expression {
                     throw new RuntimeException("An array must be declared before referencing it.");
                 }
                 //create scalar with value = 0
-                vVar = new Variable(vName: vName, value: 0, autoCreate: false); //constructing Variable adds it to Variable.VariableStore
+                vVar = new Variable(vName: vName, value: 0, autoAddToStore: false); //constructing Variable adds it to Variable.VariableStore
                 value = 0;
                 rslt = true;
             } else {
@@ -319,7 +319,7 @@ internal class Expression {
     //    return rslt;
     //}
 
-    internal short ParenExpr() {
+    public short ParenExpr() {
         short rslt = 0;
         if (Parser.ScanString("(")) {
             if (TryEvaluateExpr(out rslt)) {
@@ -336,7 +336,7 @@ internal class Expression {
         return rslt;
     }
 
-    internal bool TryGetParen(out short value) {
+    public bool TryGetParen(out short value) {
         var oldPos = Parser.LinePosition;
         value = 0;
         var rslt = false;

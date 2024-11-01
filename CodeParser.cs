@@ -219,14 +219,14 @@ internal partial class CodeParser {
                 }
             } else {
                 //undefined variable: create if scalar, throw if array
-                if (ScanChar('[', true) == null) {
-                    vVar = new Variable(vName: vName, value: 0, autoCreate: true);
+                if (ScanChar('(', true) == null) {
+                    vVar = new Variable(vName: vName, value: 0, autoAddToStore: true);
                     rslt = new LValue(vVar, null);
                 } else {
                     throw new RuntimeException("Undeclared array has no dimensions, must use DIM to declare it prior to using..");
                 }
             }
-        } else {
+        //} else {
             //just fall through, no LValue found
             //rslt = null;
         }
@@ -341,9 +341,9 @@ internal partial class CodeParser {
         return rslt;
     }
 
-    internal string? ScanRegex(string pattern) {
+    internal string? ScanRegex(string pattern, bool ignoreCase = true) {
         string? rslt = null;
-        var match = Regex.Match(Line![LinePosition..], pattern, RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        var match = Regex.Match(Line![LinePosition..], pattern, RegexOptions.CultureInvariant | (ignoreCase ?  RegexOptions.IgnoreCase : RegexOptions.None));
         if (match.Success) {
             rslt = Line.Substring(LinePosition, match.Length);
             LinePosition += match.Length;
@@ -392,6 +392,11 @@ internal partial class CodeParser {
         }
     }
 
+    /// <summary>
+    /// Look for a string literal, like 'Jack' or "ball"
+    /// </summary>
+    /// <returns>The literal string, if found (minus enclosing quotes/doublequotes); otherwise null</returns>
+    /// <exception cref="RuntimeException"></exception>
     internal string? ScanStringLiteral() {
         string? rslt;
         SkipSpaces();
@@ -413,11 +418,13 @@ internal partial class CodeParser {
             if (c == '\\') {
                 var c2 = CurrentChar ?? '\\';
                 rslt += c2 switch {
-                    '\\' => '\t',
+                    '\\' => '\\',
+                    't' => '\t',
                     'r' => '\r',
                     'n' => '\n',
                     _ => c2
                 };
+                //todo: consider more escapes, \0x, \uXXXX, \xX{1,4} \0, \esc?, +unnnn
                 LinePosition++;
             } else {
                 rslt += c;

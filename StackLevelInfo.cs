@@ -13,6 +13,10 @@ internal enum StackEntryKind {
     For,
     Gosub
 }
+
+/// <summary>
+/// Provides a stack on which to save nested control structure data (gosub-return addresses and for loops).
+/// </summary>
 internal class StackLevelInfo {
     //SymbolTable LocalSymbols; //symbols defined at current level
     //SymbolTable LocalScope; //level of last new scope (sub/function)

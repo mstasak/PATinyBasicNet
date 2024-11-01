@@ -102,7 +102,6 @@ internal partial class CodeInterpreter {
         StopRequested = false;
         NewLineOrd = -1;
         Parser.SetLine(line: line, linePosition: 0, lineNumber: lineNumber);
-        //TODO: figure out how to handle 1st return in case like '100 GOSUB 2000; GOSUB 3000'
         var statementSucceeded = true;
         while (statementSucceeded && !Parser.EoL() && NewLineOrd == -1) {
             statementSucceeded = RunStatement();
@@ -115,6 +114,9 @@ internal partial class CodeInterpreter {
     }
 
     internal bool Run(bool Immediate) {
+        if (!Immediate) {
+            Variable.ClearVariables();    
+        }
         var rslt = true;
         ImmediateMode = Immediate;
         StopRequested = false;

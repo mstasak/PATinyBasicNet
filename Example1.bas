@@ -10,10 +10,10 @@
 190 REM         unavailable in an environment like Windows
 
 300 REM ASSIGNMENTS
-310   I = 1
-320   LET J = 2 * I + 8
-330   LET C = (F - 32) * 5 / 9, K = C + 273
-340   R = RND(10); REM a random number from 1 to 10
+310 I = 1
+320 LET J = 2 * I + 8
+330 LET C = (F - 32) * 5 / 9, K = C + 273
+340 R = RND(10); REM a random number from 1 to 10
 
 400 REM LOOPS: FOR-NEXT
 410 FOR I = 1 TO 10

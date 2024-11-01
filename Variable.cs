@@ -4,20 +4,21 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace NewPaloAltoTB;
 
 internal enum VariableType {
     //Byte,
     Short,
-    //Int,
+    Int,
     //Long,
     //Single,
     //Float,
-    //Double,
+    Double,
     //Bool,
     //Char,
-    //String,
+    String,
     //Array,
     ShortArray,
     //Class,
@@ -26,6 +27,31 @@ internal enum VariableType {
     //Dict,
     //Object,
     //Variant,
+    /*
+    VTByte,
+    VTShort,
+    VTInt,
+    VTLong,
+    VTSingle,
+    VTFloat,
+    VTDouble,
+    VTBool,
+    VTChar,
+    VTString,
+    //VTArray,
+    VTArrayOf,
+    VTStruct,
+    VTEnumOf,
+    VTCodeRef,
+    VTCode,
+    VTSet,
+    VTDict,
+    VTObject,
+    VTVariant,
+    VTTuple,
+     
+     */
+
 }
 internal class Variable {
     internal string VName;
@@ -34,30 +60,44 @@ internal class Variable {
     internal object VValue;
     internal VariableType VType;
 
-    internal static Dictionary<string, Variable> VariableStore = new();
+    internal static Dictionary<string, Variable> VariableStore = NewVariableStore();
 
     //internal static Variable Shared => shared.Value;
     //private static readonly Lazy<Variable> shared = new(() => new Variable());
 
 
-    internal Variable(string vName, short value, bool autoCreate) {
+    internal Variable(string vName, short value, bool autoAddToStore) {
         VName = vName;
         VType = VariableType.Short;
         VDimensions = 0;
         VDimensionRanges = null;
         VValue = value;
-        if (autoCreate) {
+        if (autoAddToStore) {
             VariableStore.TryAdd(vName, this);
         }
     }
 
-    //internal Variable(string vName, string vValue) {
-    //    VName = vName;
-    //    VType = VariableType.String;
-    //    VDimensions = 0;
-    //    VDimensionRanges = null;
-    //    VValue = vValue;
-    //}
+    internal Variable(string vName, double value, bool autoAddToStore) {
+        VName = vName;
+        VType = VariableType.Double;
+        VDimensions = 0;
+        VDimensionRanges = null;
+        VValue = value;
+        if (autoAddToStore) {
+            VariableStore.TryAdd(vName, this);
+        }
+    }
+
+    internal Variable(string vName, string value, bool autoAddToStore) {
+        VName = vName;
+        VType = VariableType.String;
+        VDimensions = 0;
+        VDimensionRanges = null;
+        VValue = value;
+        if (autoAddToStore) {
+            VariableStore.TryAdd(vName, this);
+        }
+    }
 
     internal Variable(string vName,
                       VariableType vType,
@@ -72,7 +112,7 @@ internal class Variable {
             case VariableType.ShortArray:
                 var totalElements = 1;
                 foreach (var dRange in vDimensionRanges) {
-                    totalElements *= dRange.high - dRange.low + 1;    
+                    totalElements *= dRange.high - dRange.low + 1;
                 }
                 var arrVal = new short[totalElements];
                 var iVal = (int)(initVal ?? 0);
@@ -116,7 +156,7 @@ internal class Variable {
     private static int ElementIndex(List<(int low, int high)> dimensionRanges, List<int> elementIndexValues) {
         var nDims = dimensionRanges.Count;
         var rslt = elementIndexValues[0] - dimensionRanges[0].low;
-        for (var i = 0; i < nDims-1; i++) {
+        for (var i = 0; i < nDims - 1; i++) {
             rslt = rslt * (dimensionRanges[i].high - dimensionRanges[i].low + 1) + elementIndexValues[i] - dimensionRanges[i].low;
         }
         return rslt;
@@ -128,4 +168,18 @@ internal class Variable {
         }
         return vVar;
     }
+
+    private static Dictionary<string, Variable> NewVariableStore() {
+        var rslt = new Dictionary<string, Variable>();
+        rslt.TryAdd("TBVersion", new Variable("TBVersion", 0.001, false));
+        rslt.TryAdd("Pi", new Variable("Pi", Math.PI, false));
+        rslt.TryAdd("TBVersionString", new Variable("TBVersionString", "New Palo Alto Tiny Basic 0.001", false));
+        return rslt;
+    }
+
+    internal static void ClearVariables() {
+        VariableStore.Clear();
+        VariableStore = NewVariableStore();
+    }
+
 }
