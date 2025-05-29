@@ -14,7 +14,7 @@ internal partial class CodeParser {
 
     internal string Line = "";
     internal int LinePosition = 0;
-    internal int LineNumber = 0; //null for immediate statement
+    internal int LineNumber = 0; // 0 for immediate statement
 
     //private static readonly ParserTools shared = new();
     //internal static ParserTools Shared => shared;

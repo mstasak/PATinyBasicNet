@@ -157,7 +157,7 @@ dotnet_style_prefer_conditional_expression_over_return = true:silent
 [*.{cs,vb}]
 
 #Style - Unnecessary code rules
-csharp_style_unused_value_assignment_preference = discard_variable:warning
+csharp_style_unused_value_assignment_preference = unused_local_variable:warning
 
 #### Naming styles ####
 

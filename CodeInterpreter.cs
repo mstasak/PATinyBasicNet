@@ -403,9 +403,12 @@ internal partial class CodeInterpreter {
         var prompt = Parser.ScanStringLiteral() ?? "Press a key...";
         Console.WriteLine(prompt);
         Console.ReadKey();
+        Console.WriteLine();
         return true;
     }
     internal bool RunIfStatement() {
+        // IF X > 0 [THEN] STATEMENT [;STATEMENT...]\n
+        // no multiline block, else, or endif
         var rslt = false;
         short cond;
         if (ExpressionService.TryEvaluateExpr(out cond)) {
@@ -432,22 +435,24 @@ internal partial class CodeInterpreter {
         if (!ExpressionService.TryEvaluateExpr(out initValue)) {
             throw new RuntimeException("For loop: error in initial value expression.");
         }
-        if (Parser.ScanRegex("^\\s*to") == null) {
+        short stepValue = 1;
+        if (Parser.ScanRegex("^\\s*down\\s*to") == null) {
+            stepValue = -1;
+        } else if (Parser.ScanRegex("^\\s*to") == null) {
             throw new RuntimeException("For loop syntax: expected \" TO \".");
         }
         short limitValue;
         if (!ExpressionService.TryEvaluateExpr(out limitValue)) {
             throw new RuntimeException("For loop: error in limit value expression.");
         }
-        short stepValue = 1;
         if (Parser.ScanRegex("^\\s*step") != null) {
             if (!ExpressionService.TryEvaluateExpr(out stepValue)) {
                 throw new RuntimeException("For loop: error in step value expression.");
             }
-        } else {
-            if (limitValue < initValue) {
-                stepValue = -1;    
-            }
+        //} else {
+        //    if (limitValue < initValue) {
+        //        stepValue = -1;    
+        //    }
         }
         //got a valid for statement!
         ControlStack.Shared.ForLoopBegin(lValue: varLValue, initialVal: initValue, stepVal: stepValue, limitVal: limitValue);

@@ -139,9 +139,7 @@ internal class Variable {
             //VariableType.ShortArray => null,
             _ => null
         };
-        set {
-            VValue = value ?? 0;
-        }
+        set => VValue = value ?? 0;
     }
     public short? ShortElementValue(List<int> ArrayDimensionIndices) => VType switch {
         VariableType.ShortArray => ((short[])VValue)[ElementIndex(VDimensionRanges!, ArrayDimensionIndices)],
