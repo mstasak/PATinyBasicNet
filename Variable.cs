@@ -21,6 +21,9 @@ internal enum VariableType {
     String,
     //Array,
     ShortArray,
+    IntArray,
+    DoubleArray,
+    StringArray,
     //Class,
     //Struct,
     //Set,
@@ -55,22 +58,23 @@ internal enum VariableType {
 }
 internal class Variable {
     internal string VName;
-    internal int VDimensions;
-    internal List<(int low, int high)>? VDimensionRanges;
+    internal int DimensionCount => VDimensions?.Count ?? 0;
+    internal List<(int low, int high)>? VDimensions;
     internal object VValue;
     internal VariableType VType;
+    //internal List<int>? VIndices = null;
+    internal bool IsArray => VDimensions != null;
 
     internal static Dictionary<string, Variable> VariableStore = NewVariableStore();
 
-    //internal static Variable Shared => shared.Value;
+    //internal static Variable Shared => shared.OValue;
     //private static readonly Lazy<Variable> shared = new(() => new Variable());
 
 
     internal Variable(string vName, short value, bool autoAddToStore) {
         VName = vName;
         VType = VariableType.Short;
-        VDimensions = 0;
-        VDimensionRanges = null;
+        VDimensions = null;
         VValue = value;
         if (autoAddToStore) {
             VariableStore.TryAdd(vName, this);
@@ -80,8 +84,7 @@ internal class Variable {
     internal Variable(string vName, double value, bool autoAddToStore) {
         VName = vName;
         VType = VariableType.Double;
-        VDimensions = 0;
-        VDimensionRanges = null;
+        VDimensions = null;
         VValue = value;
         if (autoAddToStore) {
             VariableStore.TryAdd(vName, this);
@@ -91,8 +94,7 @@ internal class Variable {
     internal Variable(string vName, string value, bool autoAddToStore) {
         VName = vName;
         VType = VariableType.String;
-        VDimensions = 0;
-        VDimensionRanges = null;
+        VDimensions = null;
         VValue = value;
         if (autoAddToStore) {
             VariableStore.TryAdd(vName, this);
@@ -106,8 +108,7 @@ internal class Variable {
                       bool autoCreate) {
         VName = vName;
         VType = VariableType.ShortArray;
-        VDimensions = vDimensionRanges.Count;
-        VDimensionRanges = vDimensionRanges;
+        VDimensions = vDimensionRanges;
         switch (vType) {
             case VariableType.ShortArray:
                 var totalElements = 1;
@@ -141,14 +142,27 @@ internal class Variable {
         };
         set => VValue = value ?? 0;
     }
-    public short? ShortElementValue(List<int> ArrayDimensionIndices) => VType switch {
-        VariableType.ShortArray => ((short[])VValue)[ElementIndex(VDimensionRanges!, ArrayDimensionIndices)],
-        _ => null
-    };
+    public Value? ElementValue(List<int> ArrayDimensionIndices) {
+
+        switch (VType) {
+            case VariableType.ShortArray:
+                var shortRslt = ((short[])VValue)[ElementIndex(VDimensions!, ArrayDimensionIndices)];
+                return new(shortRslt);
+            case VariableType.Int:
+                break;
+            case VariableType.Double:
+                break;
+            case VariableType.String:
+                break;
+            default:
+                throw new NotSupportedException();
+        }
+
+    }
 
 
     public void StoreElementValue(List<int> ArrayDimensionIndices, short value) {
-        ((short[])VValue)[ElementIndex(VDimensionRanges!, ArrayDimensionIndices)] = value;
+        ((short[])VValue)[ElementIndex(VDimensions!, ArrayDimensionIndices)] = value;
     }
 
     private static int ElementIndex(List<(int low, int high)> dimensionRanges, List<int> elementIndexValues) {

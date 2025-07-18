@@ -68,3 +68,6 @@ Beef it up with several features:
 - Mouse input (not sure if this is practical without some sort of event system)
 - classes/structs/records/etc. Some custom data structure, preferably with OOP capabilities.
 - async programming
+- (from Clipper 5.x) BEGIN SEQUENCE ... BREAK ... END SEQUENCE.  This is an alternative to using a GOTO
+- or a WHILE LOOP which only runs once, to leave a block of code when a condition is met in the middle of the block body.
+- 

@@ -262,7 +262,7 @@ internal partial class CodeInterpreter {
                 rslt = false;
                 break;
             }
-            if (Parser.ScanRegex("^\\s*,\\s*") == null) {
+            if (Parser.ScanRegex("^\\s*,\\s*") == null) { // allow "LET A=1, B=2"
                 break;
             }
         }
@@ -276,9 +276,9 @@ internal partial class CodeInterpreter {
         var lVal = Parser.ScanLValue();
         if (lVal != null) {
             if (Parser.ScanRegex("^\\s*=") != null) {
-                short value;
+                Value? value;
                 if (ExpressionService.TryEvaluateExpr(out value)) {
-                    lVal!.Value = value;
+                    lVal!.Value = value!;
                     rslt = true;
                 } else {
                     throw new RuntimeException("Expression expected.");
@@ -384,6 +384,9 @@ internal partial class CodeInterpreter {
             }
             
             Console.WriteLine(prompt);
+            switch (lVal.GetType()) {
+
+            }
             var inputVal = GetUserInputShort();
             lVal!.Value = inputVal;
             if (Parser.ScanChar(',', true) == null) {
@@ -534,7 +537,10 @@ internal partial class CodeInterpreter {
         var positionSave = Parser.LinePosition;
         var whichType = ScalarType.NoMatch;
         if (Parser.ScanString("AS")) {
-            whichType = (ScalarType)Parser.ScanStringTableEntry(ScalarTypes);
+            whichType = ((ScalarType?)Parser.ScanStringTableEntry(ScalarTypes)) ?? ScalarType.NoMatch;
+            if (whichType == ScalarType.NoMatch) {
+                throw new RuntimeException("Expected: variable type");     
+            }
         } else {
             whichType = ScalarType.ShortType;    
         }

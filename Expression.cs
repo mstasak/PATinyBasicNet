@@ -9,7 +9,7 @@ namespace NewPaloAltoTB;
 /// <summary>
 /// Expression evaluation service
 /// </summary>
-internal class Expression: IExpression {
+internal class Expression { //: IExpression { -- embarassing, you can't base an internal class on an interface
 
     /// <summary>
     /// Accessable singleton object for this class.
@@ -25,7 +25,7 @@ internal class Expression: IExpression {
     /// </summary>
     /// <returns>Signed short value of expression, if successful</returns>
     /// <exception cref="RuntimeException">Thrown if parsing or calculation fails</exception>
-    public bool TryEvaluateExpr(out short value) {
+    internal Value TryEvaluateExpr(out Value? value) {
         /*
             ;*
             ;**************************************************************
@@ -47,40 +47,44 @@ internal class Expression: IExpression {
             ;* AS INDEX, FUNCTIONS CAN HAVE AN <EXPR> AS ARGUMENTS, AND
             ;* <EXPR4> CAN BE AN <EXPR> IN PARENTHESES.
             ;*
+
+        expression tree (for now) <=>, +-, * /, 
+
          */
-        int? a, b;
+        Value? a, b;
         //var oldLinePos = Parser.LinePosition;
         try {
-            a = TryExprComparisonTerm();
+            a = TryExprComparableTerm();
             if (a == null) {
-                value = 0;
-                return false;
+                value = null;
+                return new Value(false);
             }
             var whichOp = Parser.ScanStringTableEntry(["=", "<=", "<>", "<", ">=", ">", "#"]);
             if (whichOp == null) {
-                value = (short)a;
-                return true;
+                value = a;
+                return new Value(true);
             }
             //fix terms into signed short range (-32768..32767)
-            b = TryExprComparisonTerm();
+            b = TryExprComparableTerm();
             if (b == null) {
                 throw new RuntimeException($"Value expected after comparison operator.");
             }
+            //if (notbothcompatiblecomparables) { } //but = may allow more types than other relops
             a = whichOp switch {
-                0 => (a == b) ? 1 : 0,
-                1 => (a <= b) ? 1 : 0,
-                2 => (a != b) ? 1 : 0,
-                3 => (a < b) ? 1 : 0,
-                4 => (a >= b) ? 1 : 0,
-                5 => (a > b) ? 1 : 0,
-                6 => (a != b) ? 1 : 0,
-                _ => a,
+                0 => a.EqualTo(b),
+                1 => a.LessThanOrEqualTo(b),
+                2 => a.NotEqualTo(b),
+                3 => a.LessThan(b),
+                4 => a.GreaterThanOrEqualTo(b),
+                5 => a.GreaterThan(b),
+                6 => a.NotEqualTo(b),
+                _ => null,
             };
-            value = (short)a;
-            return true;
+            value = a;
+            return new Value(true);
         } catch (Exception) {
-            //value = 0;
-            //return false;
+            value = null;
+            //return new Value(false);
             throw;
         }
     }
@@ -90,15 +94,15 @@ internal class Expression: IExpression {
     /// </summary>
     /// <returns></returns>
     /// <exception cref="RuntimeException"></exception>
-    private short? TryExprComparisonTerm() {
-        int? a, b;
+    private Value? TryExprComparableTerm() {
+        Value? a, b;
         if (Parser.ScanString("-")) {
             //- prefix
             a = TryExprAddSubTerm();
             if (a == null) {
                 return null;
             }
-            a = -a;
+            a = a.NegativeValue();
         } else {
             a = TryExprAddSubTerm();
             if (a == null) {
@@ -109,25 +113,26 @@ internal class Expression: IExpression {
         while ((match = Parser.ScanStringTableEntry(["+", "-"])) != null) {
             b = TryExprAddSubTerm();
             if (b == null) {
-                throw new RuntimeException($"Value expected after addition/subtraction operator.");
+                throw new RuntimeException($"OValue expected after addition/subtraction operator.");
             }
+            //TODO: trap overflow/underflow/incompatible types/etc?
             a = match switch {
-                0 => a + b,
-                1 => a - b,
-                _ => a,
+                0 => a.Add(b),
+                1 => a.Subtract(b),
+                _ => null,
             };
         }
-        if (a < short.MinValue) {
-            throw new RuntimeException("Arithmetic underflow");
-        }
-        if (a > short.MaxValue) {
-            throw new RuntimeException("Arithmetic overflow");
-        }
-        return (short)a;
+        //if (a < short.MinValue) {
+        //    throw new RuntimeException("Arithmetic underflow");
+        //}
+        //if (a > short.MaxValue) {
+        //    throw new RuntimeException("Arithmetic overflow");
+        //}
+        return a;
     }
 
-    private short? TryExprAddSubTerm() {
-        int? a, b;
+    private Value? TryExprAddSubTerm() {
+        Value? a, b;
         a = TryExprMulDivTerm();
         if (a == null) {
             return null;
@@ -135,7 +140,7 @@ internal class Expression: IExpression {
         int? match;
         while (true) {
             Parser.SkipSpaces();
-            match = Parser.ScanStringTableEntry(["*", "/", "%"]);
+            match = Parser.ScanStringTableEntry(["*", "/", "%", "mod"]);
             if (match == null) {
                 break;
             }
@@ -144,49 +149,62 @@ internal class Expression: IExpression {
             if (b == null) {
                 throw new RuntimeException($"Value expected after multiplication/division operator.");
             }
-            if ((match == 1 || match == 2) && b == 0) {
+            if ((match == 1 || match == 2 || match == 3) && b.IsZero()) {
                 throw new RuntimeException("Division by zero.");
             }
             a = match switch {
-                0 => a * b,
-                1 => a / b,
-                2 => a % b,
+                0 => a.Multiply(b),
+                1 => a.Divide(b),
+                2 => a.Modulo(b),
+                3 => a.Modulo(b),
                 _ => a,
             };
         }
-        if (a < short.MinValue) {
-            throw new RuntimeException("Arithmetic underflow");
-        }
-        if (a > short.MaxValue) {
-            throw new RuntimeException("Arithmetic overflow");
-        }
-        return (short)a;
+        //if (a < short.MinValue) {
+        //    throw new RuntimeException("Arithmetic underflow");
+        //}
+        //if (a > short.MaxValue) {
+        //    throw new RuntimeException("Arithmetic overflow");
+        //}
+        return a!;
     }
 
-    private short? TryExprMulDivTerm() {
+    private Value? TryExprMulDivTerm() {
         //test for fn
-        short rslt;
+        Value rslt;
         Parser.SkipSpaces();
-        if (!Parser.ScanShort(out rslt) &&
+        if (!TryGetLiteral(out rslt) &&
             !TryGetFunction(out rslt) &&
             !TryGetParen(out rslt) &&
             !TryGetVariable(out rslt)) {
-            //throw new RuntimeException("Value expected.");
+            //throw new RuntimeException("OValue expected.");
             return null;
         }
         return rslt;
     }
 
-    private bool TryGetFunction(out short value) {
+    private bool TryGetLiteral(out Value value) {
+        Parser.SkipSpaces();
+        Value rslt;
+        if (Parser.ScanLiteralValue(out rslt)) {
+            value = rslt;
+            return true;
+        } else { 
+            value = Value.NullValue;
+            return false;
+        }
+    }
+
+    private bool TryGetFunction(out Value value) {
         var oldPos = Parser.LinePosition;
         var rslt = false;
-        value = 0;
+        value = Value.NullValue;
         var whichMatch = Parser.ScanStringTableEntry(["RND", "INP", "PEEK", "USR", "ABS", "SIZE"]);
         if (whichMatch.HasValue) {
             switch (whichMatch.Value) {
                 case 0: //RND(n)
                     var a = ParenExpr();
-                    value = (short)Random.Shared.Next(a);
+                    value = new Value(Random.Shared.Next((int)(a!.OValue ?? 1)));
                     rslt = true;
                     break;
                 case 1: //INP(port#)
@@ -200,17 +218,20 @@ internal class Expression: IExpression {
                 //break;
                 case 4: //ABS(n)
                     a = ParenExpr();
-                    value = short.Abs(a);
+
+                    value = new Value(Math.Abs((int)a!.OValue!));
+                    value.OValue = int.Abs((int)(a!.OValue!));
                     rslt = true;
                     break;
                 case 5: //SIZE()
-                    if (Parser.ScanEmptyParens()) {
-                        value = short.MaxValue;
-                        rslt = true;
-                    }
-                    break;
+                    throw new RuntimeException("Function not supported.");
+                    //if (Parser.ScanEmptyParens()) {
+                    //    value = short.MaxValue;
+                    //    rslt = true;
+                    //}
+                    //break;
                 default:
-                    value = 0;
+                    //value = 0;
                     break;
             }
         }
@@ -220,10 +241,10 @@ internal class Expression: IExpression {
         return rslt;
     }
 
-    private bool TryGetVariable(out short value) {
+    private bool TryGetVariable(out Value value) {
         var oldPos = Parser.LinePosition;
         var rslt = false;
-        value = 0;
+        value = Value.NullValue;
         //two choices here - autoinit undeclared var to zero, or return false.
         var vName = Parser.ScanName();
         if (vName != null) {
@@ -248,11 +269,11 @@ internal class Expression: IExpression {
                         rslt = true;
                         break;
                     case VariableType.ShortArray:
-                        var indices = Parser.ScanIndices(vVar.VDimensions);
+                        var indices = Parser.ScanIndices(vVar.DimensionCount);
                         if (indices == null) {
                             throw new RuntimeException("Missing or incorrect index value list after array variable.");
                         } else {
-                            value = vVar.ShortElementValue(indices) ?? 0;
+                            value = vVar.ElementValue(indices) ?? 0;
                             rslt = true;
                             break;
                         }
@@ -319,8 +340,8 @@ internal class Expression: IExpression {
     //    return rslt;
     //}
 
-    public short ParenExpr() {
-        short rslt = 0;
+    public Value? ParenExpr() {
+        Value? rslt = null;
         if (Parser.ScanString("(")) {
             if (TryEvaluateExpr(out rslt)) {
                 Parser.SkipSpaces();
@@ -336,12 +357,12 @@ internal class Expression: IExpression {
         return rslt;
     }
 
-    public bool TryGetParen(out short value) {
+    public bool TryGetParen(out Value? value) {
         var oldPos = Parser.LinePosition;
-        value = 0;
+        Value? rValue = null;
         var rslt = false;
         if (Parser.ScanString("(")) {
-            if (TryEvaluateExpr(out value)) {
+            if (TryEvaluateExpr(out rValue)) {
                 Parser.SkipSpaces();
                 if (Parser.ScanString(")")) {
                     rslt = true;
@@ -353,9 +374,11 @@ internal class Expression: IExpression {
         if (rslt == false) {
             Parser.LinePosition = oldPos;
         }
+        value = rValue;
         return rslt;
     }
 
+    internal bool TryEvaluateIntExpr(out int indexVal) => throw new NotImplementedException();
 }
 
 /*
@@ -372,7 +395,7 @@ Group 2 precedence, left to right associativity
     Function call	()	
     Postfix increment	++	
     Postfix decrement	--	
-    Type name	typeid	
+    ValueType name	typeid	
     Constant type conversion	const_cast	
     Dynamic type conversion	dynamic_cast	
     Reinterpreted type conversion	reinterpret_cast	

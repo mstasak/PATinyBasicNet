@@ -1,6 +1,6 @@
 ﻿namespace NewPaloAltoTB;
 
-public interface IExpression {
+internal interface IExpression {
     //internal static Expression Shared;
     //private static readonly Lazy<Expression> shared = new(() => new Expression());
 
@@ -12,7 +12,7 @@ public interface IExpression {
     /// </summary>
     /// <returns>Signed short value of expression, if successful</returns>
     /// <exception cref="RuntimeException">Thrown if parsing or calculation fails</exception>
-    public bool TryEvaluateExpr(out short value);
+    internal bool TryEvaluateExpr(out Value? value);
 
     /// <summary>
     /// Evaluate an expression fragment, at 2nd level of operator precedence ( [-] a (+|-) b )
@@ -29,7 +29,7 @@ public interface IExpression {
 
     //public bool TryGetVariable(out short value);
 
-    public short ParenExpr();
+    internal Value? ParenExpr();
 
-    public bool TryGetParen(out short value);
+    internal bool TryGetParen(out Value? value);
 }

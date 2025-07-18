@@ -155,10 +155,112 @@ internal partial class CodeParser {
         return found ? rsltVal : null;
     }
 
-    [GeneratedRegex("^\\s*(\\+|\\-)?\\d+")]
+
+    internal static double? StrToDouble(string s) {
+        double rsltVal;
+        // double.TryParse looks for this: [ws][sign][integral-digits,]integral-digits[.[fractional-digits]][e[sign]exponential-digits][ws]
+        //looks like 0.5 is matched, but not .5
+        var found = double.TryParse(s, out rsltVal);
+        return found ? rsltVal : null;
+    }
+
+    internal bool ScanLiteralValue(out Value value) {
+        return ScanLiteralDoubleValue(out value) ||
+               ScanLiteralShortValue(out value) ||
+               ScanLiteralIntValue(out value) ||
+               ScanLiteralStringValue(out value);
+    }
+
+    [GeneratedRegex("^\\s*([-+]?\\d*\\.?\\d+)(?:[eE]([-+]?\\d+))?")]
+    private static partial Regex RegexLiteralDouble();
+// from: https://rgxdb.com/r/1RSPF8MG ; note a mantissa ending in . is not accepted, like 3. or 1.E+3
+    internal bool ScanLiteralDoubleValue(out Value value) {
+        var numMatch = RegexLiteralDouble().Match(Line![LinePosition..]);
+        if (numMatch.Success) {
+            var matchStr = Line.Substring(LinePosition, numMatch.Length);
+            var dblVal = StrToDouble(matchStr);
+            if (dblVal.HasValue) {
+                value = new Value(dblVal.Value);
+                LinePosition += numMatch.Length;
+                return true;
+            }
+        }
+        value = Value.NullValue;
+        return false;
+    }
+
+    [GeneratedRegex("^\\s*[-+]?\\d+(?![eE.])")]
+    private static partial Regex RegexLiteralShort();
+
+    internal bool ScanLiteralShortValue(out Value value) {
+        var rslt = false;
+        value = Value.NullValue;
+        var numMatch = RegexLiteralShort().Match(Line![LinePosition..]);
+        if (numMatch.Success) {
+            var matchStr = Line.Substring(LinePosition, numMatch.Length);
+            var shortVal = StrToShort(matchStr);
+            if (shortVal.HasValue) {
+                rslt = true;
+                value = new Value(shortVal.Value);
+                LinePosition += numMatch.Length;
+            }
+        }
+        return rslt;
+    }
+
+    [GeneratedRegex("^\\s*[-+]?\\d+(?:[eE.])")]
     private static partial Regex RegexLiteralInt();
 
-    internal bool ScanInt(out int value) {
+    internal bool ScanLiteralIntValue(out Value value) {
+        var rslt = false;
+        value = Value.NullValue;
+        var numMatch = RegexLiteralInt().Match(Line![LinePosition..]);
+        if (numMatch.Success) {
+            var matchStr = Line.Substring(LinePosition, numMatch.Length);
+            var intVal = StrToInt(matchStr);
+            if (intVal.HasValue) {
+                rslt = true;
+                value = new Value(intVal.Value);
+                LinePosition += numMatch.Length;
+            }
+        }
+        return rslt;
+    }
+
+    internal bool ScanLiteralStringValue(out Value value) {
+        var rslt = false;
+        value = Value.NullValue;
+        var numMatch = RegexLiteralInt().Match(Line![LinePosition..]);
+        if (numMatch.Success) {
+            var matchStr = Line.Substring(LinePosition, numMatch.Length);
+            var shortVal = StrToShort(matchStr);
+            if (shortVal.HasValue) {
+                rslt = true;
+                value = new Value(shortVal.Value);
+                LinePosition += numMatch.Length;
+            }
+        }
+        return rslt;
+    }
+
+    //variations without Value boxing
+    internal bool ScanLiteralShort(out short value) {
+        var rslt = false;
+        value = 0;
+        var numMatch = RegexLiteralShort().Match(Line![LinePosition..]);
+        if (numMatch.Success) {
+            var matchStr = Line.Substring(LinePosition, numMatch.Length);
+            var shortIntVal = StrToShort(matchStr);
+            if (shortIntVal.HasValue) {
+                rslt = true;
+                value = shortIntVal.Value;
+                LinePosition += numMatch.Length;
+            }
+        }
+        return rslt;
+    }
+
+    internal bool ScanLiteralInt(out int value) {
         var rslt = false;
         value = 0;
         var numMatch = RegexLiteralInt().Match(Line![LinePosition..]);
@@ -173,25 +275,10 @@ internal partial class CodeParser {
         }
         return rslt;
     }
-    internal bool ScanShort(out short value) {
-        var rslt = false;
-        value = 0;
-        var numMatch = RegexLiteralInt().Match(Line![LinePosition..]);
-        if (numMatch.Success) {
-            var matchStr = Line.Substring(LinePosition, numMatch.Length);
-            var shortVal = StrToShort(matchStr);
-            if (shortVal.HasValue) {
-                rslt = true;
-                value = shortVal.Value;
-                LinePosition += numMatch.Length;
-            }
-        }
-        return rslt;
-    }
 
     internal string? ScanName() {
         SkipSpaces();
-        return ScanRegex("^(@|[A-Z][A-z0-9_]*)");
+        return ScanRegex("^(@|[A-Z][a-z0-9_]*)");
     }
 
     internal LValue? ScanLValue() {
@@ -210,7 +297,7 @@ internal partial class CodeParser {
                         rslt = new LValue(vVar, null);
                         break;
                     case VariableType.ShortArray:
-                        vIndices = ScanIndices(vVar.VDimensions);
+                        vIndices = ScanIndices(vVar.DimensionCount);
                         if (vIndices == null) {
                             throw new RuntimeException("Missing index list following array variable.");
                         }
@@ -245,8 +332,8 @@ internal partial class CodeParser {
         var needRBracket = false;
         if (ScanChar('(', true) != null) {
             while (true) {
-                short indexVal;
-                if (Expression.Shared.TryEvaluateExpr(out indexVal)) {
+                int indexVal;
+                if (Expression.Shared.TryEvaluateIntExpr(out indexVal)) {
                     rslt.Add((int)indexVal);
                     var gotComma = (ScanChar(',', true) != null);
                     needTerm = gotComma;
@@ -288,11 +375,11 @@ internal partial class CodeParser {
 
     internal (int low, int high)? ScanArrayDimension() {
         (int low, int high)? rslt = null;
-        short n;
-        if (Expression.Shared.TryEvaluateExpr(out n)) {
+        int n;
+        if (Expression.Shared.TryEvaluateIntExpr(out n)) {
             if (ScanString("to") || ScanString("..")) {
-                short n2;
-                if (Expression.Shared.TryEvaluateExpr(out n2)) {
+                int n2;
+                if (Expression.Shared.TryEvaluateIntExpr(out n2)) {
                     rslt = (n, n2);
                 } else {
                     throw new RuntimeException("Expected: array upper bound.");
@@ -341,6 +428,12 @@ internal partial class CodeParser {
         return rslt;
     }
 
+    /// <summary>
+    /// Search for a given RegEx pattern, returning matched string if found or null if nomatch
+    /// </summary>
+    /// <param name="pattern"></param>
+    /// <param name="ignoreCase"></param>
+    /// <returns></returns>
     internal string? ScanRegex(string pattern, bool ignoreCase = true) {
         string? rslt = null;
         var match = Regex.Match(Line![LinePosition..], pattern, RegexOptions.CultureInvariant | (ignoreCase ?  RegexOptions.IgnoreCase : RegexOptions.None));
@@ -453,17 +546,17 @@ internal partial class CodeParser {
         do {
             var cursorSave = LinePosition;
             procedOne = false;
-            if (rslt.low == -1 && ScanInt(out i)) {
+            if (rslt.low == -1 && ScanLiteralInt(out i)) {
                 rslt.low = i;
                 procedOne = true;
             } else {
                 LinePosition = cursorSave;
-                if (rslt.high == -1 && ScanChar('-', true) != null & ScanInt(out i)) {
+                if (rslt.high == -1 && ScanChar('-', true) != null & ScanLiteralInt(out i)) {
                     rslt.high = i;
                     procedOne = true;
                 } else {
                     LinePosition = cursorSave;
-                    if (rslt.high == -1 && ScanChar(',', true) != null & ScanInt(out i)) {
+                    if (rslt.high == -1 && ScanChar(',', true) != null & ScanLiteralInt(out i)) {
                         rslt.lineCount = i;
                         procedOne = true;
                     } else {
@@ -479,4 +572,5 @@ internal partial class CodeParser {
         } while (procedOne);
         return rslt;
     }
+
 }

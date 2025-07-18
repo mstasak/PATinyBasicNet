@@ -95,8 +95,10 @@ internal class CommandShell() {
                 rslt = true;
                 break;
             case Commands.Load:
+                Console.WriteLine("Not implementet yet!");
                 break;
             case Commands.Save:
+                Console.WriteLine("Not implementet yet!");
                 break;
             case Commands.Bye:
             case Commands.Quit:
@@ -104,10 +106,12 @@ internal class CommandShell() {
                 Exiting = true;
                 rslt = true;
                 break;
-            case Commands.Delete:
-            case Commands.Kill:
+            case Commands.Delete: //delete a line or range of lines
                 DeleteLine();
                 rslt = true;
+                break;
+            case Commands.Kill: //delete a file
+                Console.WriteLine("Not implementet yet!");
                 break;
             case Commands.Help:
                 //hmm - drill down by typing keywords?  Prev/Next browse 10-20 pages of static content?
@@ -136,9 +140,9 @@ internal class CommandShell() {
     }
 
     internal void DeleteLine() {
-        int lineNum;
+        short lineNum;
         Parser.SkipSpaces();
-        if (Parser.ScanInt(out lineNum)) {
+        if (Parser.ScanLiteralShort(out lineNum)) {
             if (Parser.EoL()) {
                 //delete line if found
                 Interpreter.DeleteLine(lineNum);
@@ -150,7 +154,7 @@ internal class CommandShell() {
 
     internal bool TryEdit() {
         short lineNum;
-        if (Parser.ScanShort(out lineNum)) {
+        if (Parser.ScanLiteralShort(out lineNum)) {
             if (Parser.EoL()) {
                 //delete line if found
                 Interpreter.DeleteLine(lineNum);
