@@ -48,12 +48,13 @@ Beef it up with several features:
 - matrix math lib
 - math constants lib
 - unit conversion lib? (US/SAE:metric)
+- built-in SQLite support
+- lots of qb64pe compatibility additions, including audio, sprites
 
-(doubtful - much work just to make an inferior version of vb6/vb.net)
+(somewhat doubtful - much work just to make an inferior version of vb6/vb.net)
 - a GUI editor or IDE
-- sound creation
-- a database access library (MSSQL/SQLite/MySQL/PostgreSQL/MongopDB?)
-- network access? net service access?
+- a database access library (MSSQL/SQLite/MySQL/PostgreSQL/MongopDB?/others?)
+- network access? net service (SOAP/webservice/REST/whatever) access?
 - JSON lib?
 - some debugging tools (trace, dump, watch, maybe line debugging)
 - Subs and Functions with passed arguments and independent variable scopes
@@ -64,10 +65,10 @@ Beef it up with several features:
 - extensibility system to define new statements and libraries accessed via DLL calls
 - compatibility modes, to enforce strict original version or allow enhancements (maybe fork enhancements instead)
 - possibly some gaming support, including DirectX input?
-- Idea: User-defined statements
+- Idea: User-defined statements (perhaps simply preprocessor-ish like C has)
 - Mouse input (not sure if this is practical without some sort of event system)
 - classes/structs/records/etc. Some custom data structure, preferably with OOP capabilities.
-- async programming
+- async programming, threads, locking
 - (from Clipper 5.x) BEGIN SEQUENCE ... BREAK ... END SEQUENCE.  This is an alternative to using a GOTO
-- or a WHILE LOOP which only runs once, to leave a block of code when a condition is met in the middle of the block body.
+  or a WHILE LOOP which only runs once, to leave a block of code when a condition is met in the middle of the block body.
 - 
